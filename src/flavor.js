@@ -162,6 +162,7 @@ function windowFlavor(x, L, rng, fx, X, Y, kind, mi, out) {
     anim = rng() < 0.22;
     const fx0 = gx + Math.floor((gw - FOLK_CROP.w) / 2), fy0 = gy + gh - FOLK_CROP.h;
     person = { name, x: fx0, y: fy0 };
+    out.people.push(person);   // anyone in a window may call out a catchphrase (drawn by game.js)
     if (anim) out.folk.push({ name, x: fx0, y: fy0, o: mi });
     else { const s = folkSprite(name, 0); if (s) x.drawImage(s, fx0, fy0); }
     R_(x, gx, gy, 5, 1, 'rgba(255,255,255,0.35)'); R_(x, gx + 1, gy + 1, 3, 1, 'rgba(255,255,255,0.25)');   // glass glare
@@ -275,7 +276,7 @@ function roofFlavor(x, rng, fx, X, w2, topY) {
 const TAKEN = new Set();   // shop names used lately on this street, so signs don't repeat
 function addBuildingFlavor(c, mods, style, lv, n) {
   const x = c.getContext('2d'), L = (c.lit = mkCanvas(c.width, c.height)).getContext('2d');
-  x.imageSmoothingEnabled = false; c.folk = [];
+  x.imageSmoothingEnabled = false; c.folk = []; c.people = [];
   const rng = makeRng(9100 + lv * 131 + n * 17), fx = FX[style.name];
   if (n === 0 || TAKEN.size >= SHOP_NAMES[style.name].length - 4) TAKEN.clear();
   const taken = TAKEN;

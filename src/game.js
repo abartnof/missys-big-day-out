@@ -1218,6 +1218,39 @@ let skyCache = null;
 const STAR_COL = Array.from({ length: 101 }, (_, i) => 'rgba(255,255,240,' + (i / 100).toFixed(2) + ')');
 let LAMPS_LIT = [];
 const LIT_NOW = [];
+// ---- easter egg: now and then a neighbour leans out and calls a classic comedy catchphrase ----
+const QUOTE = { b: null, p: null, text: '', t: 0, cd: 6, last: '', clk: 0 };
+function updateQuote(bs) {
+  const q = QUOTE, now = G.clock || 0, dt = clamp(now - q.clk, 0, 0.5); q.clk = now;   // game-clock time: stops when paused
+  if (q.b) { q.t -= dt; if (q.t <= 0 || q.b.x + q.p.x - bs < -20 || q.b.x + q.p.x - bs > W + 20) q.b = null; return; }
+  q.cd -= dt;
+  if (q.cd > 0 || G.state === 'over' || (G.wm && G.wm.mode !== 'none') || G.mimic) return;
+  const seen = [];   // neighbours currently in view, away from the screen edges
+  for (const b of bldSeq) {
+    if (!b.c.people || !b.c.people.length) continue;
+    for (const p of b.c.people) { const x = b.x - bs + p.x; if (x > 70 && x < W - 90) seen.push([b, p]); }
+  }
+  if (!seen.length) return;
+  const [b, p] = seen[Math.floor(Math.random() * seen.length)];
+  let text; do { text = QUOTES[Math.floor(Math.random() * QUOTES.length)]; } while (text === q.last && QUOTES.length > 1);
+  Object.assign(q, { b, p, text, last: text, t: 3.2 + text.length * 0.03, cd: 5 + Math.random() * 6 });
+}
+function drawQuote(bs) {
+  const q = QUOTE; if (!q.b) return;
+  const font = pfont(16), lines = wrapText(q.text, 200, font);
+  ctx.font = font;
+  const tw = Math.max(...lines.map(l => ctx.measureText(l).width));
+  const bw = Math.ceil(tw) + 12, bh = lines.length * 17 + 6;
+  const by0 = SIDEWALK_TOP + 2 - q.b.c.height, px = Math.round(q.b.x - bs + q.p.x + 8), py = by0 + q.p.y;
+  const bx = Math.round(clamp(px - bw / 2, 4, W - 4 - bw)), byy = Math.round(Math.max(50, py - bh - 10));
+  ctx.fillStyle = '#1c1a26'; ctx.fillRect(bx - 2, byy - 2, bw + 4, bh + 4);
+  ctx.fillStyle = '#fffbe8'; ctx.fillRect(bx, byy, bw, bh);
+  const tx = clamp(px, bx + 6, bx + bw - 6);                     // little tail down to the window
+  for (let i = 0; i < 5; i++) { ctx.fillStyle = '#1c1a26'; ctx.fillRect(tx - (5 - i) - 1, byy + bh + 2 + i - 2, (5 - i) * 2 + 2, 1); }
+  for (let i = 0; i < 5; i++) { ctx.fillStyle = '#fffbe8'; ctx.fillRect(tx - (5 - i), byy + bh + i - 1, (5 - i) * 2, 1); }
+  ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#1c1a26';
+  lines.forEach((l, i) => ctx.fillText(l, bx + 6, byy + 3 + 8 + i * 17));
+}
 function drawBackground() {
   const sc = G.cam, clk = G.clock || 0, p = dayPhase(), sk = skyAt(p);
   // (a) sky: gradient by time of day, stars at night, the sun or moon, three depths of clouds, a distant plane
@@ -1256,6 +1289,7 @@ function drawBackground() {
     if (b.c.hasFolk) for (const f of b.c.folk) { const s = folkSprite(f.name, Math.floor(clk * 2.2 + f.o) % 4); if (s) ctx.drawImage(s, sx + f.x, by + f.y); }   // the odd resident with a lively idle
     if (b.c.lit && sk.glow > 0.05) LIT_NOW.push(b.c.lit, sx, by);
   }
+  updateQuote(bs);
   ctx.fillStyle = '#4a4f5c'; ctx.fillRect(0, SIDEWALK_TOP - 2, W, 4);   // building base shadow
   // sidewalk (1x)
   ctx.fillStyle = '#c9ccd3'; ctx.fillRect(0, SIDEWALK_TOP + 2, W, CURB_Y - SIDEWALK_TOP);
@@ -1292,6 +1326,7 @@ function drawBackground() {
     ctx.fillStyle = 'rgba(255,230,150,' + (0.8 * sk.glow).toFixed(3) + ')'; ctx.fillRect(lx - 4, ly, 8, 3);
   }
   LAMPS_LIT = [];
+  drawQuote(bs);
 }
 
 function drawDecor(e, sx) {
