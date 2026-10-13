@@ -810,7 +810,7 @@ function updatePlay(dt) {
 const CRITTERS = {
   rabbit: { img: 'critter_rabbit', n: 11, scale: 2, pts: 10, name: 'BUNNY!', w: 44, h: 26 },
   cat: { img: 'critter_cat', n: 13, scale: 2, pts: 15, name: 'KITTY!', w: 40, h: 26 },
-  frog: { img: 'critter_frog', n: 4, scale: 1, pts: 20, name: 'FROGGY!', w: 24, h: 22, faceLeft: true },
+  frog: { img: 'critter_frog', n: 4, scale: 1, pts: 20, name: 'FROGGY!', w: 18, h: 15, faceLeft: true },
 };
 function spawnCritter(kind, side, seed) {
   kind = kind === 'bunny' ? 'rabbit' : kind;

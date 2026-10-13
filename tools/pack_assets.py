@@ -47,6 +47,18 @@ for name, pal in PARROTS.items():
 shutil.copy(RAW / "minifolks/MinifolksVillagers/Outline/MiniNobleWoman.png", OUT / "woman.png")
 for src, dst in (("Jumping.png", "critter_rabbit.png"), ("JumpCattt.png", "critter_cat.png"), ("FrogIdle.png", "critter_frog.png")):
     shutil.copy(RAW / "FreeAnimalPack" / src, OUT / dst)
+# The frog is drawn at 1x but is chunkier than Missy, so shrink it to about 2/3 inside each 32x32 frame,
+# feet on the same baseline. Hard alpha keeps the edges crisp like the rest of the pixel art.
+frog = Image.open(RAW / "FreeAnimalPack" / "FrogIdle.png").convert("RGBA")
+small = Image.new("RGBA", frog.size)
+for i in range(frog.width // 32):
+    cell = frog.crop((i * 32, 0, i * 32 + 32, 32))
+    x0, y0, x1, y1 = cell.getbbox()
+    body = cell.crop((x0, y0, x1, y1))
+    body = body.resize((max(1, round(body.width * 2 / 3)), max(1, round(body.height * 2 / 3))), Image.LANCZOS)
+    body.putalpha(body.getchannel("A").point(lambda a: 255 if a >= 110 else 0))
+    small.alpha_composite(body, (i * 32 + 16 - body.width // 2, y1 - body.height))
+small.save(OUT / "critter_frog.png")
 shutil.copy(RAW / "toilet_files" / "toilet-sheet.png", OUT / "toilet.png")
 di = Image.open(RAW / "DogMegaPackFree" / "DogItems.png").convert("RGBA")
 bones = Image.new("RGBA", (46, 15))
