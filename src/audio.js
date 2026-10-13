@@ -1,43 +1,17 @@
-// Tiny synthesized sound effects (WebAudio, no files).
+// Sound glue: all sounds and music come from dog-audio.js (window.DogAudio).
+// The kit has no "huff", so that one breathy noise burst is synthesized here.
 const Sfx = (() => {
-  let ctx = null, muted = false;
-  try { muted = localStorage.getItem('missys_mute') === '1'; } catch (e) {}
-  function ensure() {
-    if (!ctx) {
-      try { ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return null; }
-    }
-    if (ctx.state === 'suspended') ctx.resume();
-    return ctx;
+  const A = window.DogAudio;
+  let hctx = null;
+  try { A.setMuted(localStorage.getItem('missys_mute') === '1'); } catch (e) {}
+  function ctx() {
+    if (!hctx) { try { hctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return null; } }
+    if (hctx.state === 'suspended') hctx.resume();
+    return hctx;
   }
-  // one blip: frequency sweep f0 -> f1 over dur seconds
-  function tone(f0, f1, dur, type = 'square', vol = 0.12, delay = 0) {
-    if (muted) return;
-    const c = ensure(); if (!c) return;
-    const t = c.currentTime + delay;
-    const o = c.createOscillator(), g = c.createGain();
-    o.type = type;
-    o.frequency.setValueAtTime(f0, t);
-    o.frequency.exponentialRampToValueAtTime(Math.max(20, f1), t + dur);
-    g.gain.setValueAtTime(vol, t);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    o.connect(g); g.connect(c.destination);
-    o.start(t); o.stop(t + dur + 0.02);
-  }
-  function noise(len, freq, q, vol) {
-    if (muted) return;
-    const c = ensure(); if (!c) return;
-    const t = c.currentTime;
-    const buf = c.createBuffer(1, Math.floor(c.sampleRate * len), c.sampleRate), d = buf.getChannelData(0);
-    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
-    const src = c.createBufferSource(); src.buffer = buf;
-    const bp = c.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = freq; bp.Q.value = q;
-    const g = c.createGain(); g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + len);
-    src.connect(bp); bp.connect(g); g.connect(c.destination); src.start(t);
-  }
-  // short, low, breathy "huff": band-passed noise burst with a quick attack/decay
   function huff() {
-    if (muted) return;
-    const c = ensure(); if (!c) return;
+    if (A.isMuted()) return;
+    const c = ctx(); if (!c) return;
     const t = c.currentTime, len = 0.22;
     const buf = c.createBuffer(1, Math.floor(c.sampleRate * len), c.sampleRate), d = buf.getChannelData(0);
     for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
@@ -46,29 +20,84 @@ const Sfx = (() => {
     bp.frequency.setValueAtTime(900, t); bp.frequency.exponentialRampToValueAtTime(260, t + len);
     const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1400;
     const g = c.createGain();
-    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.55, t + 0.025); g.gain.exponentialRampToValueAtTime(0.0001, t + len);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.4, t + 0.025); g.gain.exponentialRampToValueAtTime(0.0001, t + len);
     src.connect(bp); bp.connect(lp); lp.connect(g); g.connect(c.destination);
     src.start(t);
-    tone(150, 90, 0.12, 'triangle', 0.08);   // faint low chest thump under the breath
+  }
+
+  // ---- little NES-style animal voices (quiet; same chiptune character as the kit) ----
+  const waves = {}, lastAt = {};
+  function wave(c, duty) {
+    if (!waves[duty]) {
+      const n = 64, re = new Float32Array(n), im = new Float32Array(n);
+      for (let k = 1; k < n; k++) re[k] = Math.sin(Math.PI * k * duty) / (Math.PI * k);
+      waves[duty] = c.createPeriodicWave(re, im);
+    }
+    return waves[duty];
+  }
+  // o: {w:'pulse12'|'pulse25'|'triangle'|'square', f, f2, f3 (second glide target), at, dur, vol, vib:[hz,depth]}
+  function blip(o) {
+    if (A.isMuted()) return;
+    const c = ctx(); if (!c) return;
+    const t = c.currentTime + 0.01 + (o.at || 0), dur = o.dur, vol = o.vol == null ? 0.08 : o.vol;
+    const osc = c.createOscillator(), g = c.createGain();
+    if (o.w === 'pulse12') osc.setPeriodicWave(wave(c, 0.125)); else if (o.w === 'pulse25') osc.setPeriodicWave(wave(c, 0.25)); else osc.type = o.w || 'triangle';
+    osc.frequency.setValueAtTime(o.f, t);
+    if (o.f2) osc.frequency.exponentialRampToValueAtTime(o.f2, t + (o.f3 ? dur * 0.45 : dur));
+    if (o.f3) osc.frequency.exponentialRampToValueAtTime(o.f3, t + dur);
+    if (o.vib) {
+      const lfo = c.createOscillator(), dep = c.createGain();
+      lfo.frequency.value = o.vib[0]; dep.gain.value = o.vib[1]; lfo.connect(dep).connect(osc.frequency); lfo.start(t); lfo.stop(t + dur + 0.05);
+    }
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol, t + 0.006);
+    g.gain.setValueAtTime(vol, t + dur * 0.6); g.gain.linearRampToValueAtTime(0, t + dur);
+    osc.connect(g); g.connect(c.destination); osc.start(t); osc.stop(t + dur + 0.05);
+  }
+  function hiss(at, dur, vol) {
+    if (A.isMuted()) return;
+    const c = ctx(); if (!c) return;
+    const t = c.currentTime + 0.01 + at, n = Math.floor(c.sampleRate * dur);
+    const buf = c.createBuffer(1, n, c.sampleRate), d = buf.getChannelData(0);
+    for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
+    const src = c.createBufferSource(); src.buffer = buf;
+    const hp = c.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 3500;
+    const g = c.createGain(); g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    src.connect(hp); hp.connect(g); g.connect(c.destination); src.start(t);
+  }
+  const arp = (notes, w, vol) => notes.forEach((f, i) => blip({ w, f, at: i * 0.075, dur: 0.09, vol }));
+  const VOICES = {
+    bunny_squeak() { blip({ w: 'triangle', f: 1400, f2: 2000, dur: 0.07, vol: 0.07 }); },
+    bunny_boing() { blip({ w: 'triangle', f: 280, f2: 620, dur: 0.1, vol: 0.07 }); },
+    cat_mew() { blip({ w: 'pulse25', f: 620, f2: 1150, f3: 700, dur: 0.34, vol: 0.07, vib: [18, 22] }); },
+    cat_hiss() { hiss(0, 0.2, 0.07); },
+    frog_croak() { blip({ w: 'pulse12', f: 190, f2: 80, dur: 0.07, vol: 0.09 }); blip({ w: 'pulse12', f: 160, f2: 65, at: 0.1, dur: 0.09, vol: 0.09 }); },
+    frog_plip() { blip({ w: 'pulse12', f: 500, f2: 900, dur: 0.035, vol: 0.06 }); },
+    flap() { [0, 0.045, 0.09].forEach(a => blip({ w: 'pulse12', f: 520, f2: 330, at: a, dur: 0.03, vol: 0.06 })); },
+    squawk() { blip({ w: 'pulse25', f: 1500, f2: 800, dur: 0.12, vol: 0.07, vib: [40, 160] }); blip({ w: 'pulse25', f: 1200, f2: 600, at: 0.12, dur: 0.1, vol: 0.06, vib: [40, 130] }); },
+    caught_rabbit() { arp([523, 659, 784], 'pulse25', 0.07); },
+    caught_cat() { arp([587, 740, 880], 'pulse25', 0.07); },
+    caught_frog() { arp([392, 494, 587], 'pulse12', 0.09); },
+  };
+  function voice(id) {          // rate-limited per sound so nothing stacks up
+    const now = performance.now();
+    if (lastAt[id] && now - lastAt[id] < 120) return;
+    lastAt[id] = now; if (VOICES[id]) VOICES[id]();
   }
   return {
-    unlock: ensure,
-    get muted() { return muted; },
+    voice,
+    unlock() { A.unlock(); },
+    get muted() { return A.isMuted(); },
     toggle() {
-      muted = !muted;
-      try { localStorage.setItem('missys_mute', muted ? '1' : '0'); } catch (e) {}
-      return muted;
+      A.setMuted(!A.isMuted());
+      try { localStorage.setItem('missys_mute', A.isMuted() ? '1' : '0'); } catch (e) {}
     },
-    jump() { tone(280, 620, 0.14, 'square', 0.08); },
-    land() { tone(120, 60, 0.07, 'triangle', 0.1); },
-    bark() { huff(); },
-    crunch() { noise(0.07, 2600, 5, 0.3); tone(520 + Math.random() * 120, 330, 0.06, 'square', 0.05); },
-    crunch5() { noise(0.09, 2200, 4, 0.3); [660, 880, 1175].forEach((f, i) => tone(f, f * 1.02, 0.09, 'square', 0.07, i * 0.06)); },
-    squawk() { tone(900, 1500, 0.08, 'sawtooth', 0.12); tone(1400, 600, 0.18, 'sawtooth', 0.12, 0.08); tone(1100, 500, 0.12, 'square', 0.06, 0.2); },
-    dizzy() { for (let i = 0; i < 6; i++) tone(500 + (i % 2) * 220, 380 + (i % 2) * 150, 0.12, 'triangle', 0.1, i * 0.12); },
-    alert() { tone(600, 600, 0.08, 'square', 0.07); tone(800, 800, 0.1, 'square', 0.07, 0.1); },
-    start() { [392, 523, 659].forEach((f, i) => tone(f, f, 0.1, 'square', 0.07, i * 0.08)); },
-    over() { [392, 330, 262].forEach((f, i) => tone(f, f * 0.98, 0.2, 'triangle', 0.1, i * 0.18)); },
-    flap() { tone(500, 900, 0.05, 'triangle', 0.05); },
+    huff,
+    sfx(id, arg) { A.sfx(id, arg); },
+    shout(line, opts) { A.shout(line, opts); },
+    pause() { A.pause(); if (hctx) hctx.suspend(); },
+    unpause() { A.unpause(); if (hctx) hctx.resume(); },
+    suspend() { A.suspend(); if (hctx) hctx.suspend(); },
+    resume() { A.resume(); if (hctx) hctx.resume(); },
+    music: A.music,
   };
 })();

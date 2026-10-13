@@ -17,14 +17,18 @@ owner catch you.
 | Duck (slow creep, can't jump) | Down / S |
 | Huff (scares parrots) | X / K |
 | Pause / Mute | P or Esc / M |
+| High scores (title screen) | L (hold C to clear) |
 
-Touch: on-screen buttons (left, right, duck, jump, huff); tapping the game also jumps.
+Touch (landscape): buttons live in the side gutters, never over the game (left, right, duck | jump, huff, pause); tap anywhere on the menu screens to start or continue. Portrait shows a rotate prompt.
 
 ## Rules
 
 - Food is +1; steak, bacon, sausage and salmon hop and are worth +5. Score comes only from food.
 - Parrots cost 3 points. Hit one with fewer than 3 points and Missy is stunned for a second.
 - Obstacles are solid: climb on top of them. Get squeezed between one and the left screen edge and it's over.
+- Each level is 75 m long and ends at a toilet: walk Missy over and she lies down next to it. Food carries across levels; every level is a new street, a bit faster and trickier (parrot types and the owner's tricks unlock level by level).
+- Rare bonus critters (bunny +10, kitty +15, froggy +20) can run across a level; just touch them. Only parrots hurt.
+- The top 10 scores (with date and how far you got) are kept in your browser.
 - Every so often the owner shouts something and charges across the street. Touch her and it's over.
 
 ## How it's made

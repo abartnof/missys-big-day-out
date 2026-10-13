@@ -15,7 +15,16 @@ for n in "dry_dog_food meat1 bacon sausage_p fish salmon rubber_duck milk_chocol
     shutil.copy(RAW / "Pixel_Mart" / (n + ".png"), OUT / "items" / (n + ".png"))
 shutil.copy(RAW / "city" / "general.png", OUT / "general.png")
 shutil.copy(RAW / "city" / "bgs1.png", OUT / "bgs1.png")
-shutil.copy(RAW / "city" / "bgs2.png", OUT / "bgs2.png")
+# far skyline: keep only the pale city silhouette of bgs2 (the sky itself is drawn as a gradient in game.js)
+bg2 = Image.open(RAW / "city" / "bgs2.png").convert("RGBA")
+sky = bg2.crop((0, 250, 640, 360)); spx = sky.load()
+for yy in range(sky.height):
+    for xx in range(sky.width):
+        if spx[xx, yy][:3] == (255, 255, 255) or spx[xx, yy][:3] == (254, 254, 255) or (yy < 6 and spx[xx, yy][:3] != (222, 236, 255) and spx[xx, yy][:3] != (202, 224, 255)):
+            spx[xx, yy] = (255, 255, 255, 0)
+sky.save(OUT / "skyline_far.png")
+# mid towers: only the tower rows of bgs1 plus the solid base below (hidden behind buildings)
+shutil.copy(RAW / "city" / "bgs1.png", OUT / "bgs1.png")
 
 # parrot variants: recolor the brown bird (exact palette swap, done at build time)
 SRCB = {(144, 82, 18): 0, (107, 56, 3): 1, (174, 109, 42): 2, (67, 37, 6): 3, (203, 159, 66): 4, (166, 128, 47): 5, (222, 173, 72): 6}
@@ -36,6 +45,9 @@ for name, pal in PARROTS.items():
                     px[x, y] = pal[SRCB[(r, g, b)]] + (a,)
     im.save(OUT / ("bird_%s.png" % name))
 shutil.copy(RAW / "minifolks/MinifolksVillagers/Outline/MiniNobleWoman.png", OUT / "woman.png")
+for src, dst in (("Jumping.png", "critter_rabbit.png"), ("JumpCattt.png", "critter_cat.png"), ("FrogIdle.png", "critter_frog.png")):
+    shutil.copy(RAW / "FreeAnimalPack" / src, OUT / dst)
+shutil.copy(RAW / "toilet_files" / "toilet-sheet.png", OUT / "toilet.png")
 di = Image.open(RAW / "DogMegaPackFree" / "DogItems.png").convert("RGBA")
 bones = Image.new("RGBA", (46, 15))
 bones.paste(di.crop((5, 8, 28, 23)), (0, 0)); bones.paste(di.crop((37, 8, 60, 23)), (23, 0))
