@@ -66,11 +66,11 @@ const SHOP_NAMES = {
   decay: ['PAWN', 'BARBER', 'LAUNDRY', 'TACOS', 'VIDEO', 'CLOSED', 'FOR RENT', 'REPAIR', 'DISCOUNT', 'TV REPAIR', 'BAIT', 'SQUIRREL WATCH', 'PETS'],
 };
 const FX = {   // chance of each bit of flavor, per style
-  downtown: { sign: 0.12, hang: 0.4, open: 0.12, plaque: 0, graf: 0.12, poster: 0.35, folk: 0.34, lit: 0.45, ac: 0.18, dish: 0.12, cat: 0.05, pigeon: 0.1, box: 0, mural: 0.35, roof: 0.45, alleyGraf: 0.4, alleyLine: 0.45 },
-  suburbs: { sign: 0.12, hang: 0.5, open: 0.12, plaque: 0, graf: 0, poster: 0.08, folk: 0.34, lit: 0.5, ac: 0, dish: 0.05, cat: 0.1, pigeon: 0.06, box: 0.5, mural: 0, roof: 0.3, alleyGraf: 0, alleyLine: 0.7 },
-  brick: { sign: 0.12, hang: 0.45, open: 0.12, plaque: 0, graf: 0.28, poster: 0.35, folk: 0.3, lit: 0.45, ac: 0.1, dish: 0.08, cat: 0.07, pigeon: 0.14, box: 0.06, mural: 0.6, roof: 0.45, alleyGraf: 0.7, alleyLine: 0.5 },
-  glass: { sign: 0.12, hang: 0, open: 0.12, plaque: 0, graf: 0, poster: 0.04, folk: 0.2, lit: 0.7, ac: 0.08, dish: 0.1, cat: 0.02, pigeon: 0.04, box: 0, mural: 0, roof: 0.3, alleyGraf: 0, alleyLine: 0 },
-  decay: { sign: 0.12, hang: 0.25, open: 0.12, plaque: 0, graf: 0.85, poster: 0.5, folk: 0.22, lit: 0.3, ac: 0.3, dish: 0.28, cat: 0.1, pigeon: 0.25, box: 0, mural: 0.35, roof: 0.6, alleyGraf: 1, alleyLine: 0.3 },
+  downtown: { sign: 0, hang: 0.4, open: 0, plaque: 0, graf: 0.12, poster: 0.35, folk: 0.34, lit: 0.45, ac: 0.18, dish: 0.12, cat: 0.05, pigeon: 0.1, box: 0, mural: 0.35, roof: 0.45, alleyGraf: 0.4, alleyLine: 0.45 },
+  suburbs: { sign: 0, hang: 0.5, open: 0, plaque: 0, graf: 0, poster: 0.08, folk: 0.34, lit: 0.5, ac: 0, dish: 0.05, cat: 0.1, pigeon: 0.06, box: 0.5, mural: 0, roof: 0.3, alleyGraf: 0, alleyLine: 0.7 },
+  brick: { sign: 0, hang: 0.45, open: 0, plaque: 0, graf: 0.28, poster: 0.35, folk: 0.3, lit: 0.45, ac: 0.1, dish: 0.08, cat: 0.07, pigeon: 0.14, box: 0.06, mural: 0.6, roof: 0.45, alleyGraf: 0.7, alleyLine: 0.5 },
+  glass: { sign: 0, hang: 0, open: 0, plaque: 0, graf: 0, poster: 0.04, folk: 0.2, lit: 0.7, ac: 0.08, dish: 0.1, cat: 0.02, pigeon: 0.04, box: 0, mural: 0, roof: 0.3, alleyGraf: 0, alleyLine: 0 },
+  decay: { sign: 0, hang: 0.25, open: 0, plaque: 0, graf: 0.85, poster: 0.5, folk: 0.22, lit: 0.3, ac: 0.3, dish: 0.28, cat: 0.1, pigeon: 0.25, box: 0, mural: 0.35, roof: 0.6, alleyGraf: 1, alleyLine: 0.3 },
 };
 const SPRAY = ['#ff5a8a', '#ffd24a', '#5ad8ff', '#8aff6a', '#ff8a3a', '#c88aff', '#ffffff'];
 const ROOMS = [['#6a5560', '#c0506a'], ['#5a6458', '#d8a840'], ['#4e5a72', '#e0e0e0'], ['#6b5a46', '#4a8a6a'], ['#56465a', '#e8884a']];
