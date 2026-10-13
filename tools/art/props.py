@@ -222,6 +222,28 @@ def hedge(L, x0, y0, x1, y1, r, rad):
     L.update(T)
 
 
+def shrub(L, x0, y0, x1, y1, planter_h, pal=GH):
+    """A rounded, lumpy shrub (overlapping leaf clumps, drawn back to front) in a stone planter."""
+    fy1 = y1 - planter_h + 2                     # foliage spills a little over the planter rim
+    w, h = x1 - x0 + 1, fy1 - y0 + 1
+    r = max(4, min(10, h // 3))
+    n = max(2, w // (r + 2))
+    span = w - 2 * r
+    clumps = [(x0 + r + i * span / (n - 1), fy1 - r + 1, r) for i in range(n)]               # low row
+    if h > 3 * r:                                                                             # middle row
+        clumps += [(x0 + r + (i + 0.5) * span / (n - 1), y0 + h // 2, r + 1) for i in range(n - 1)]
+    clumps += [(x0 + r + (i + 0.5) * span / (n - 1), y0 + r + (2 if i % 2 else 1), r + (1 if i % 2 else 2))
+               for i in range(n - 1)]                                                         # top row, lit
+    for cx, cy, rr in clumps:
+        S = Layer(); clump(S, cx, cy, rr, pal)
+        for (x, y), c in S.items():
+            if x0 <= x <= x1 and y0 <= y <= fy1: L[(x, y)] = c
+    speckle(L, pal, 14)
+    shade_rect(L, x0, y1 - planter_h + 1, x1, y1, GREY)      # planter / curb
+    for x in range(x0, x1 + 1):
+        L[(x, y1 - planter_h + 1)] = GREY[0]                 # lit rim
+
+
 def trunk(L, cx, y0, y1, hw, flare=3, pal=BARK):
     for y in range(y0, y1 + 1):
         fl = max(0, flare - (y1 - y)) if flare else 0
@@ -337,7 +359,7 @@ def build():
 
     # hedge square
     b = mk('hedge', 281, 200, 46, 46); L = Layer()
-    hedge(L, 1, 1, 44, 44, 4, 4); b.commit(L)
+    shrub(L, 1, 1, 44, 44, 9); b.commit(L)
 
     # garbage bag
     b = mk('bag', 329, 200, 25, 26); L = Layer()
@@ -425,7 +447,7 @@ def build():
 
     # ---- row B ----
     b = mk('hedgeLong', 0, 262, 45, 14); L = Layer()
-    hedge(L, 1, 1, 43, 12, 3, 3); b.commit(L)
+    shrub(L, 1, 1, 43, 12, 3); b.commit(L)
 
     def cone(b, ox):
         L = Layer()
