@@ -27,7 +27,7 @@ const FOODS = ['dry_dog_food', 'meat1', 'bacon', 'sausage_p', 'fish', 'salmon', 
 const REGULAR = FOODS.filter(f => !HIGH.includes(f));
 const PARROTS = ['green', 'green', 'blue', 'red', 'grey'];
 const LINES = [
-  "I have to fly to Columbus tomorrow!", "You're allergic to that!", "I already fed you!", "Who even left that there!",
+  "I have to fly to Columbus tomorrow!", "You're allergic to that!", "I already fed you!", "Who even left that food there?",
   "I have to fly to New York tomorrow!", "It's about to rain, hurry up!", "No, we're not going across the street!",
   "It's bedtime!", "I'm watching my stories on TV right now!", "I just fed you!", "No, we just went out!",
   "Are you kidding? Survivor just started!", "Do you know what time it is?", "Stop huffing, go lay down",
