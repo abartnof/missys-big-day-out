@@ -6,6 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <title>Missy's Big Day Out</title>
 <style>
+  @font-face { font-family: "DotGothic16"; src: url("assets/DotGothic16-Latin.ttf") format("truetype"); font-display: block; }
   html, body { margin: 0; position: fixed; inset: 0; width: 100%; height: 100%; background: #14161d; overflow: hidden; overscroll-behavior: none;
                touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
   #sa { position: fixed; left: 0; top: 0; width: 0; height: 0; visibility: hidden;
@@ -16,17 +17,17 @@
   .gut { position: absolute; top: 0; bottom: 0; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 12px; }
   body.touch .gut { display: flex; }
   .tbtn { width: var(--bs, 76px); height: var(--bs, 76px); box-sizing: border-box; display: flex; flex-direction: column; align-items: center; justify-content: center;
-          color: #fff; font: bold 16px "Courier New", monospace; text-align: center; line-height: 1.05; background: rgba(40, 52, 84, 0.78);
+          color: #fff; font: 16px "DotGothic16", monospace; text-align: center; line-height: 1.05; background: rgba(40, 52, 84, 0.78);
           border: 4px solid #0d0f18; box-shadow: inset 0 0 0 3px rgba(255, 255, 255, 0.35), 0 5px 0 rgba(0, 0, 0, 0.55);
           clip-path: polygon(0 6px, 6px 6px, 6px 0, calc(100% - 6px) 0, calc(100% - 6px) 6px, 100% 6px, 100% calc(100% - 6px), calc(100% - 6px) calc(100% - 6px), calc(100% - 6px) 100%, 6px 100%, 6px calc(100% - 6px), 0 calc(100% - 6px));
           touch-action: none; transition: transform 0.04s; }
-  .tbtn small { font-size: 10px; opacity: 0.85; }
+  .tbtn small { font-size: 16px; opacity: 0.85; }
   .tbtn .ar { font-size: 28px; }
   .tbtn.on { background: rgba(240, 168, 40, 0.92); transform: translateY(4px); color: #1c1a26; }
   #bJump { width: calc(var(--bs, 76px) * 1.2); height: calc(var(--bs, 76px) * 1.2); font-size: 20px; background: rgba(60, 130, 80, 0.8); }
   #bPause { width: 44px; height: 44px; font-size: 16px; position: absolute; top: 8px; }
   #gr #bPause { right: 8px; } 
-  #rotate { display: none; position: fixed; inset: 0; z-index: 10; background: #14161d; color: #fff; font: bold 22px "Courier New", monospace; text-align: center;
+  #rotate { display: none; position: fixed; inset: 0; z-index: 10; background: #14161d; color: #fff; font: 16px "DotGothic16", monospace; line-height: 1.6; text-align: center;
             flex-direction: column; align-items: center; justify-content: center; gap: 18px; }
   #rotate .ph { width: 54px; height: 90px; border: 6px solid #ffe9a8; box-sizing: border-box; animation: rot 2.2s ease-in-out infinite; position: relative; }
   #rotate .ph::after { content: ""; position: absolute; left: 50%; bottom: 5px; width: 10px; height: 4px; margin-left: -5px; background: #ffe9a8; }
@@ -47,7 +48,7 @@
   <div class="tbtn" id="bJump">JUMP</div>
   <div class="tbtn" id="bHuff">HUFF</div>
 </div>
-<div id="rotate"><div class="ph"></div><div>Rotate your phone</div><div style="font-size:13px;opacity:.7">Missy's Big Day Out plays in landscape</div></div>
+<div id="rotate"><div class="ph"></div><div>Rotate your phone</div><div style="font-size:16px;opacity:.7">Missy's Big Day Out plays in landscape</div></div>
 <script src="dog-audio.js"></script>
 <script src="audio.js"></script>
 <script src="assets/props.js"></script>

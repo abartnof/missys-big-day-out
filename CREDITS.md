@@ -14,6 +14,13 @@ to redistribute or resell it. Download it from its creator instead.
 | The owner | [MiniFolks - Villagers](https://lyaseek.itch.io/minifvillagers) | LYASeeK | Use as you like, don't resell; credit appreciated |
 | Food | [Pixel Mart](https://ghostpixxells.itch.io/pixel-mart) | ghostpixxells | Free to download, commercial use allowed |
 
+## Font
+
+[DotGothic16](https://fonts.google.com/specimen/DotGothic16) by Fontworks
+(<https://github.com/fontworks-fonts/DotGothic16>), under the **SIL Open Font
+License 1.1** (`src/assets/DotGothic16-OFL.txt`). The game embeds a subset with
+only its Latin characters.
+
 ## Original art
 
 The street, buildings, skylines, street props, parrots, bunny, kitty, frog,

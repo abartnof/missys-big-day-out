@@ -21,6 +21,9 @@ def inline(m):
     return "<script>\n" + code + "\n</script>"
 
 html = re.sub(r'<script src="([^"]+)"></script>', inline, html)
+# fonts referenced from CSS are embedded too, so the page still makes no network requests
+for f in sorted((SRC / "assets").glob("*.ttf")):
+    html = html.replace('url("assets/' + f.name + '")', 'url("data:font/ttf;base64,' + base64.b64encode(f.read_bytes()).decode() + '")')
 head_js = "<script>window.__ASSETS=" + json.dumps(assets) + ";</script>\n"
 html = html.replace("<script>", head_js + "<script>", 1)
 # The same page twice: missys-big-day-out.html is the one to download, and index.html is what

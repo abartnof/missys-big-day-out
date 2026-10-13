@@ -45,6 +45,7 @@ async function loadAll() {
     bird_green: 'bird_green.png', bird_blue: 'bird_blue.png', bird_red: 'bird_red.png', bird_grey: 'bird_grey.png', toilet: 'toilet.png',
     critter_rabbit: 'critter_rabbit.png', critter_cat: 'critter_cat.png', critter_frog: 'critter_frog.png' };
   const jobs = Object.entries(files).map(async ([k, f]) => { IMG[k] = await loadImage('assets/' + f); });
+  if (document.fonts) jobs.push(document.fonts.load('16px "DotGothic16"').catch(() => {}));
   for (const id of FOODS) if (!id.startsWith('bone')) jobs.push(loadImage('assets/items/' + id + '.png').then(i => { IMG[id] = i; }));
   await Promise.all(jobs);
   for (const [i, id] of ['bone', 'bone2'].entries()) {
@@ -293,6 +294,14 @@ function newWoman() {
     turned: false, x0: 0, x1: 0, flip: false, over: false, dodged: false, prevSign: 0, phase: 'run', pt: 0, marks: [], markIdx: 0 };
 }
 
+// back to the title screen (after game over). The game-over song is allowed to finish; then the title song loops.
+function goToTitle() {
+  G.state = 'title'; G.titleT = 0; G.showLB = false; G.cam = 0; G.dist = 0; G.level = 1; G.cfg = levelCfg(1);
+  buildScenery(1); layoutBuildings(1); layoutDecor(1); layoutFG(1);
+  G.entities = []; G.parts = []; G.texts = []; G.mimic = null; G.critter = null; G.shake = 0;
+  G.dog = newDog(); G.wm = newWoman(); G.wm.over = true; G.wm.sx = 240; G.wm.flip = false;
+  if (Sfx.music.current() !== 'home' || G.homeDone) Sfx.music.playLevel(1);
+}
 // a fresh run: level 1, score 0
 function startGame() {
   G.score = 0; G.newBest = false; G.reason = ''; G.rank = 0; G.t = 0; G.seen = {};
@@ -567,7 +576,8 @@ function endGame(reason) {
   G.rank = G.score > 0 ? addScore() : 0; if (!G.lb.length) G.lb = loadLB();
   if (reason === 'caught') Sfx.sfx('caught');
   const hi = G.rank === 1;
-  Sfx.music.play('home', { delay: hi ? 3.9 : 1.8 });
+  G.homeDone = false;
+  Sfx.music.play('home', { delay: hi ? 3.9 : 1.8, onEnd: () => { G.homeDone = true; if (G.state === 'title') Sfx.music.playLevel(1); } });
   if (hi) setTimeout(() => Sfx.sfx('new_high_score'), 1700);
 }
 function crush() {  // Missy is squeezed against the left screen edge: indignant HUFF, brief freeze, then game over
@@ -1219,8 +1229,8 @@ function drawEntities() {
       ctx.save(); ctx.translate(Math.round(sx), Math.round(FEET_Y - e.c + bob));
       if (left) ctx.scale(-1, 1);  // sprite faces right; parrots mostly fly left
       ctx.drawImage(img, fr * 16, 0, 16, 16, -16, -16, 32, 32); ctx.restore();
-      if (e.kind === 'percher' && e.alert > 0 && e.state === 'perch') outlineText('!', sx, FEET_Y - e.c - 24, 'bold 16px "Courier New", monospace', '#ff6a5a', 'center');
-      if (e.kind === 'thief' && e.state === 'fly') outlineText('?', sx, FEET_Y - e.c - 22, 'bold 12px "Courier New", monospace', '#ffd24a', 'center');
+      if (e.kind === 'percher' && e.alert > 0 && e.state === 'perch') outlineText('!', sx, FEET_Y - e.c - 24, pfont(16), '#ff6a5a', 'center');
+      if (e.kind === 'thief' && e.state === 'fly') outlineText('?', sx, FEET_Y - e.c - 22, pfont(12), '#ffd24a', 'center');
     }
   }
 }
@@ -1232,9 +1242,9 @@ function drawWarns() {
     const on = Math.floor(w.t * 10) % 2 === 0;
     if (w.arc) {
       for (let sx = W - 6; sx > 0; sx -= 12) { ctx.fillStyle = on ? '#fff' : '#ffd24a'; ctx.fillRect(Math.round(sx) - 1, Math.round(FEET_Y - swoopC(sx)) - 1, 3, 3); }
-      outlineText('dip', DIP_X, FEET_Y - 32 + 18, 'bold 10px "Courier New", monospace', '#ffd24a', 'center', '#1c1a26', 2);
+      outlineText('dip', DIP_X, FEET_Y - 32 + 18, pfont(10), '#ffd24a', 'center', '#1c1a26', 2);
     }
-    if (on) for (const h of w.heights) outlineText('<!', W - 14, FEET_Y - h, 'bold 18px "Courier New", monospace', '#ff5a4a', 'center', '#1c1a26', 4);
+    if (on) for (const h of w.heights) outlineText('<!', W - 14, FEET_Y - h, pfont(18), '#ff5a4a', 'center', '#1c1a26', 4);
   }
 }
 
@@ -1274,12 +1284,12 @@ function drawHuffBubble(d) {
   const k = d.bubble / 0.8, sx = S2(d.x);
   const x = clamp(sx + d.face * 24, 40, W - 40), y = FEET_Y - d.dh - 70 - (1 - Math.min(1, k)) * 6;
   ctx.globalAlpha = Math.min(1, k * 3);
-  const w = 62, h = 20, bx = x - w / 2, by = y - h / 2;
+  const w = 64, h = 22, bx = x - w / 2, by = y - h / 2;
   ctx.fillStyle = '#1c1a26'; ctx.fillRect(bx - 2, by - 2, w + 4, h + 4);
   ctx.fillStyle = '#fff'; ctx.fillRect(bx, by, w, h);
   const tx = clamp(sx, bx + 6, bx + w - 12);
   ctx.fillStyle = '#1c1a26'; ctx.fillRect(tx, by + h + 2, 6, 3); ctx.fillStyle = '#fff'; ctx.fillRect(tx, by + h, 6, 2);
-  outlineText('HUFF!', bx + w / 2, by + h / 2 + 1, 'bold 14px "Courier New", monospace', '#c4382f', 'center', '#fff', 0);
+  outlineText('HUFF!', bx + w / 2, by + h / 2 + 1, pfont(16), '#c4382f', 'center', '#fff', 0);
   ctx.globalAlpha = 1;
 }
 
@@ -1295,33 +1305,33 @@ function wrapText(str, maxW, font) {
 
 // speech bubble: mode 'head' (tail points down to cx) or 'edge' (pinned to a screen edge, tail points off-screen)
 function drawSpeech(text, cx, bottomY, mode, side, pulse) {
-  const font = 'bold 12px "Courier New", monospace';
-  const lines = wrapText(text, 224, font);
+  const font = pfont(16);
+  const lines = wrapText(text, 240, font);
   ctx.font = font;
   const tw = Math.max(...lines.map(l => ctx.measureText(l).width));
-  const bw = Math.ceil(tw) + 16 + (mode === 'top' ? 20 : 0), bh = lines.length * 15 + 10;
+  const bw = Math.ceil(tw) + 16 + (mode === 'top' ? 20 : 0), bh = lines.length * 17 + 10;
   let bx, by;
   if (mode === 'edge') {
     const off = Math.round(Math.sin(pulse * 9) * 2.5);
-    bx = side === 'left' ? 14 + off : W - 14 - bw - off; by = FEET_Y - 88 - bh / 2;
-  } else if (mode === 'top') { bx = side === 'left' ? 14 : W - 14 - bw; by = 52 + Math.round(Math.sin(pulse * 8) * 1.5); }
+    bx = side === 'left' ? 14 + off : W - 14 - bw - off; by = Math.round(FEET_Y - 88 - bh / 2);
+  } else if (mode === 'top') { bx = side === 'left' ? 14 : W - 14 - bw; by = 98 + Math.round(Math.sin(pulse * 8) * 1.5); }
   else { bx = clamp(cx - bw / 2, 4, W - 4 - bw); by = bottomY - bh - 8; }
   ctx.fillStyle = '#1c1a26'; ctx.fillRect(bx - 2, by - 2, bw + 4, bh + 4);
   ctx.fillStyle = '#fff'; ctx.fillRect(bx, by, bw, bh);
   ctx.fillStyle = '#1c1a26';
   if (mode === 'edge') {
-    const ty = by + bh / 2, dir = side === 'left' ? -1 : 1, ex = side === 'left' ? bx : bx + bw;
+    const ty = Math.round(by + bh / 2), dir = side === 'left' ? -1 : 1, ex = side === 'left' ? bx : bx + bw;
     for (let i = 0; i < 8; i++) { ctx.fillRect(ex + dir * (i + 2) - (dir < 0 ? 1 : 0), ty - (8 - i) - 1, 1, (8 - i) * 2 + 2); }
     ctx.fillStyle = '#fff';
     for (let i = 0; i < 8; i++) { ctx.fillRect(ex + dir * (i + 1) - (dir < 0 ? 1 : 0), ty - (8 - i), 1, (8 - i) * 2); }
     // arrow chevrons on the edge
-    outlineText(side === 'left' ? '<<' : '>>', side === 'left' ? 8 : W - 8, ty - 22, 'bold 14px "Courier New", monospace', '#ff6a5a', 'center', '#1c1a26', 3);
+    outlineText(side === 'left' ? '<<' : '>>', side === 'left' ? 20 : W - 20, by + bh + 12, pfont(16), '#ff6a5a', 'center', '#1c1a26', 3);
   } else if (mode === 'top') {
     const tx = side === 'left' ? bx + 24 : bx + bw - 24;   // tail points up: it comes from above
     for (let i = 0; i < 6; i++) ctx.fillRect(tx - (6 - i) - 1, by - 2 - i + 1, (6 - i) * 2 + 2, 1);
     ctx.fillStyle = '#fff';
     for (let i = 0; i < 6; i++) ctx.fillRect(tx - (6 - i), by - i, (6 - i) * 2, 1);
-    drawFeather(bx + bw - 15, by + bh / 2 - 7);
+    drawFeather(bx + bw - 15, Math.round(by + bh / 2) - 7);
   } else {
     const tx = clamp(cx, bx + 10, bx + bw - 10);
     for (let i = 0; i < 6; i++) { ctx.fillRect(Math.round(tx) - (6 - i) - 1, by + bh + 2 + i - 2, (6 - i) * 2 + 2, 1); }
@@ -1329,7 +1339,7 @@ function drawSpeech(text, cx, bottomY, mode, side, pulse) {
     for (let i = 0; i < 6; i++) { ctx.fillRect(Math.round(tx) - (6 - i), by + bh + i - 1, (6 - i) * 2, 1); }
   }
   ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#1c1a26'; ctx.font = font;
-  lines.forEach((l, i) => ctx.fillText(l, Math.round(bx + 8), Math.round(by + 5 + 7.5 + i * 15 + 1)));
+  lines.forEach((l, i) => ctx.fillText(l, Math.round(bx + 8), Math.round(by + 5 + 8 + i * 17)));
 }
 
 function drawFeather(x, y) {   // tell-tale feather icon on a Mimic's bubble
@@ -1341,7 +1351,7 @@ function drawFeather(x, y) {   // tell-tale feather icon on a Mimic's bubble
 function drawWoman() {
   const wm = G.wm;
   if (wm.mode === 'warn') { drawSpeech(wm.line, 0, 0, 'edge', wm.side, wm.pulse); return; }
-  if (wm.mode === 'none' && !wm.over && G.state !== 'title') return;
+  if (G.state === 'title' || (wm.mode === 'none' && !wm.over)) return;
   const sx = Math.round(wm.sx), y = FEET_Y - wm.dh - 30 * WOMAN_SCALE;
   shadow(sx, FEET_Y, 17 * (1 - Math.min(0.5, wm.dh / 250)), 0.28);
   ctx.save(); ctx.translate(sx, 0); ctx.scale(wm.flip ? -1 : 1, 1);
@@ -1357,48 +1367,58 @@ function drawParts() {
     if (p.k === 'dust') { ctx.globalAlpha = k * 0.7; ctx.fillStyle = p.col; ctx.beginPath(); ctx.arc(p.x, p.y, p.s * (1.3 - k * 0.5), 0, 6.283); ctx.fill(); }
     else if (p.k === 'spark') { ctx.globalAlpha = Math.min(1, k * 1.5); ctx.fillStyle = p.col; const s = Math.round(p.s); ctx.fillRect(Math.round(p.x) - 1, Math.round(p.y) - s, 2, s * 2); ctx.fillRect(Math.round(p.x) - s, Math.round(p.y) - 1, s * 2, 2); }
     else if (p.k === 'feather') { ctx.globalAlpha = Math.min(1, k * 2); ctx.fillStyle = p.col; ctx.fillRect(Math.round(p.x), Math.round(p.y), p.s + 1, p.s - 1); }
-    else if (p.k === 'bang') { ctx.globalAlpha = Math.min(1, k * 2); outlineText('!', p.x, p.y, 'bold ' + Math.round(16 + (1 - k) * 6) + 'px "Courier New", monospace', '#fff', 'center'); }
-    else if (p.k === 'z') { ctx.globalAlpha = Math.min(1, k * 2); outlineText('z', p.x + Math.sin(p.t * 3) * 4, p.y, 'bold ' + Math.round(10 + p.t * 5) + 'px "Courier New", monospace', '#fff', 'center'); }
+    else if (p.k === 'bang') { ctx.globalAlpha = Math.min(1, k * 2); outlineText('!', p.x, p.y, pfont(Math.round(16 + (1 - k) * 6)), '#fff', 'center'); }
+    else if (p.k === 'z') { ctx.globalAlpha = Math.min(1, k * 2); outlineText('z', p.x + Math.sin(p.t * 3) * 4, p.y, pfont(Math.round(10 + p.t * 5)), '#fff', 'center'); }
     else if (p.k === 'ring') { ctx.globalAlpha = k * 0.8; ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; for (let i = 0; i < 2; i++) { ctx.beginPath(); const r = 10 + (1 - k) * (40 + i * 22); if (p.s > 0) ctx.arc(p.x, p.y, r, -0.7, 0.7); else ctx.arc(p.x, p.y, r, Math.PI - 0.7, Math.PI + 0.7); ctx.stroke(); } }
     ctx.globalAlpha = 1;
   }
 }
 
+// All text is DotGothic16, a pixel font drawn on a 16 px grid: only 16 px and its multiples land its pixels on
+// whole screen pixels, so it stays crisp when the canvas is scaled up.
+const PF = '"DotGothic16", monospace';
+function pfont(n) { return (n < 30 ? 16 : n < 46 ? 32 : 48) + 'px ' + PF; }
+// outline drawn NES-style: the text stamped in the outline colour at every neighbouring pixel, then filled
 function outlineText(str, x, y, font, col, align = 'left', oc = '#1c1a26', ow = 3) {
   ctx.font = font; ctx.textAlign = align; ctx.textBaseline = 'middle';
-  if (ow) { ctx.lineJoin = 'round'; ctx.lineWidth = ow; ctx.strokeStyle = oc; ctx.strokeText(str, Math.round(x), Math.round(y)); }
-  ctx.fillStyle = col; ctx.fillText(str, Math.round(x), Math.round(y));
+  x = Math.round(x); y = Math.round(y);
+  if (ow) {
+    const r = ow >= 6 ? 2 : 1; ctx.fillStyle = oc;
+    for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) if (dx || dy) ctx.fillText(str, x + dx, y + dy);
+  }
+  ctx.fillStyle = col; ctx.fillText(str, x, y);
 }
 
 function drawHUD() {
-  ctx.fillStyle = 'rgba(20,22,34,0.45)'; ctx.fillRect(0, 0, W, 34);
+  ctx.fillStyle = 'rgba(20,22,34,0.5)'; ctx.fillRect(0, 0, W, 44);
   const m = Math.min(LEVEL_M, Math.floor(G.dist));
-  outlineText('LEVEL ' + G.level + '   ' + m + ' / ' + LEVEL_M + ' m', 10, 9, 'bold 12px "Courier New", monospace', '#fff', 'left', '#1c1a26', 3);
-  const bx = 10, by = 20, bw = 150;   // progress bar with the toilet waiting at the end
-  ctx.fillStyle = '#1c1a26'; ctx.fillRect(bx - 1, by - 1, bw + 2, 9);
-  ctx.fillStyle = '#3b4258'; ctx.fillRect(bx, by, bw, 7);
-  ctx.fillStyle = '#8affb0'; ctx.fillRect(bx, by, Math.round(bw * clamp(G.dist / LEVEL_M, 0, 1)), 7);
-  ctx.drawImage(IMG.toilet, 0, 0, 32, 32, bx + bw + 3, 12, 20, 20);
-  outlineText('FOOD ' + String(G.score).padStart(4, '0'), W / 2 + 20, 14, 'bold 18px "Courier New", monospace', '#fff', 'center');
-  outlineText('BEST ' + String(G.best).padStart(4, '0') + '  LV ' + G.bestLevel, W - 10, 11, 'bold 11px "Courier New", monospace', '#ffe680', 'right', '#1c1a26', 3);
-  outlineText(Sfx.muted ? '\u266A MUTED (M)   P: pause' : Sfx.blocked() ? '\u266A OFF: CLICK   P: pause' : '\u266A ON   M: mute   P: pause', W - 10, 26, 'bold 10px "Courier New", monospace', '#cfe0ff', 'right', '#1c1a26', 2);
+  // row 1 (y 11): level + metres | food | best      row 2 (y 33): progress bar + toilet | sound / pause
+  outlineText('LEVEL ' + G.level + '  ' + m + ' / ' + LEVEL_M + ' m', 8, 11, pfont(16), '#fff', 'left', '#1c1a26', 3);
+  const bx = 10, by = 29, bw = 150;   // progress bar with the toilet waiting at the end
+  ctx.fillStyle = '#1c1a26'; ctx.fillRect(bx - 1, by - 1, bw + 2, 10);
+  ctx.fillStyle = '#3b4258'; ctx.fillRect(bx, by, bw, 8);
+  ctx.fillStyle = '#8affb0'; ctx.fillRect(bx, by, Math.round(bw * clamp(G.dist / LEVEL_M, 0, 1)), 8);
+  ctx.drawImage(IMG.toilet, 0, 0, 32, 32, bx + bw + 4, 22, 20, 20);
+  outlineText('FOOD ' + String(G.score).padStart(4, '0'), W / 2, 11, pfont(16), '#fff', 'center');
+  outlineText('BEST ' + String(G.best).padStart(4, '0') + '  LV ' + G.bestLevel, W - 8, 11, pfont(16), '#ffe680', 'right', '#1c1a26', 3);
+  outlineText(Sfx.muted ? 'MUTED (M)  P: pause' : Sfx.blocked() ? 'SOUND OFF  P: pause' : 'M: mute  P: pause', W - 8, 31, pfont(16), '#cfe0ff', 'right', '#1c1a26', 2);
   // a reminder of the keys, just under the HUD (computers only; touch has its buttons)
-  if (!touchMode) outlineText('ARROWS: move / duck   SPACE: jump   X: huff', W - 10, 44, 'bold 10px "Courier New", monospace', '#fff', 'right', '#1c1a26', 2);
-  if (!paused && G.state !== 'title') drawSoundBlocked(touchMode ? 46 : 60);
+  if (!touchMode && G.state !== 'over' && G.state !== 'win') { ctx.globalAlpha = 0.8; outlineText('ARROWS: move / duck   SPACE: jump   X: huff', W - 8, 55, pfont(16), '#fff', 'right', '#1c1a26', 2); ctx.globalAlpha = 1; }
+  if (!paused && G.state !== 'title' && G.state !== 'over' && G.state !== 'win') drawSoundBlocked(touchMode ? 52 : 68);
   if (G.bannerT > 0 && G.state === 'play') {   // run intro banner, fades out
     const a = clamp(G.bannerT / 0.9, 0, 1) * clamp((3.4 - G.bannerT) / 0.3, 0, 1);
     ctx.globalAlpha = a;
-    const lines = wrapText(INTRO, 400, 'bold 14px "Courier New", monospace'), bh = lines.length * 20 + 18;
+    const lines = wrapText(INTRO, 400, pfont(16)), bh = lines.length * 20 + 20;
     ctx.fillStyle = '#1c1a26'; ctx.fillRect(W / 2 - 212, 190 - bh / 2 - 2, 424, bh + 4);
     ctx.fillStyle = 'rgba(255,255,255,0.96)'; ctx.fillRect(W / 2 - 210, 190 - bh / 2, 420, bh);
     ctx.fillStyle = '#ffd24a'; ctx.fillRect(W / 2 - 210, 190 - bh / 2, 420, 3);
-    ctx.font = 'bold 14px "Courier New", monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#1c1a26';
-    lines.forEach((l, i) => ctx.fillText(l, W / 2, 190 - bh / 2 + 19 + i * 20));
+    ctx.font = pfont(16); ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#1c1a26';
+    lines.forEach((l, i) => ctx.fillText(l, W / 2, Math.round(190 - bh / 2) + 20 + i * 20));
     ctx.globalAlpha = 1;
   }
   if (G.cardT > 0 && (G.state === 'play')) {
     ctx.globalAlpha = clamp(G.cardT / 0.6, 0, 1) * clamp((2.2 - G.cardT) / 0.15, 0, 1);
-    outlineText('LEVEL ' + G.level, W / 2, 130, 'bold 46px "Courier New", monospace', '#fff', 'center', '#2c2a44', 8);
+    outlineText('LEVEL ' + G.level, W / 2, 130, pfont(48), '#fff', 'center', '#2c2a44', 8);
     ctx.globalAlpha = 1;
   }
 }
@@ -1406,37 +1426,38 @@ function drawHUD() {
 function drawTexts() {
   for (const t of G.texts) {
     ctx.globalAlpha = clamp((1 - t.t / t.life) * 2, 0, 1);
-    outlineText(t.str, clamp(t.x, 60, W - 60), t.y, 'bold ' + t.size + 'px "Courier New", monospace', t.col, 'center');
+    outlineText(t.str, clamp(t.x, 60, W - 60), t.y, pfont(t.size), t.col, 'center');
   }
   ctx.globalAlpha = 1;
 }
 
 function panel(x, y, w, h) {
-  ctx.fillStyle = 'rgba(18,20,32,0.78)'; ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = 'rgba(18,20,32,0.88)'; ctx.fillRect(x, y, w, h);
   ctx.strokeStyle = '#fff'; ctx.globalAlpha = 0.5; ctx.lineWidth = 2; ctx.strokeRect(x + 3, y + 3, w - 6, h - 6); ctx.globalAlpha = 1;
 }
 
-// leaderboard list (top 10): rank, score, level + metres, date/time. hl = rank to highlight (1-based)
-function drawLB(x, y, hl) {
-  const f = 'bold 11px "Courier New", monospace', hf = 'bold 9px "Courier New", monospace';
-  // columns: rank | Level | Meters | Food | Date
-  const cLv = x + 44, cM = x + 88, cFood = x + 130, cDate = x + 140;
-  outlineText('TOP 10', x + 105, y, 'bold 12px "Courier New", monospace', '#ffd24a', 'center', '#1c1a26', 2);
-  outlineText('LEVEL', cLv, y + 15, hf, '#cfe0ff', 'right', '#1c1a26', 2);
-  outlineText('METERS', cM, y + 15, hf, '#cfe0ff', 'right', '#1c1a26', 2);
-  outlineText('FOOD', cFood, y + 15, hf, '#ffe680', 'right', '#1c1a26', 2);
-  outlineText('DATE', cDate, y + 15, hf, '#b8bfd6', 'left', '#1c1a26', 2);
-  for (let i = 0; i < 10; i++) {
-    const e = G.lb[i], yy = y + 28 + i * 12;
-    if (hl === i + 1) { ctx.fillStyle = 'rgba(255,210,74,0.30)'; ctx.fillRect(x - 6, yy - 6, 252, 12); }
+// leaderboard list: rank | LEVEL | METERS | FOOD | DATE (right-aligned numbers). hl = rank to highlight (1-based), n = rows shown
+function drawLB(x, y, hl, n = 10) {
+  const f = pfont(16), RH = 17;
+  const cRank = x, cLv = x + 112, cM = x + 184, cFood = x + 232, cDate = x + 248;
+  outlineText('TOP ' + n, x + 160, y, pfont(16), '#ffd24a', 'center', '#1c1a26', 2);
+  const hy = y + RH + 2;
+  outlineText('RANK', cRank, hy, f, '#b8bfd6', 'left', '#1c1a26', 2);
+  outlineText('LEVEL', cLv, hy, f, '#cfe0ff', 'right', '#1c1a26', 2);
+  outlineText('METERS', cM, hy, f, '#cfe0ff', 'right', '#1c1a26', 2);
+  outlineText('FOOD', cFood, hy, f, '#ffe680', 'right', '#1c1a26', 2);
+  outlineText('DATE', cDate, hy, f, '#b8bfd6', 'left', '#1c1a26', 2);
+  for (let i = 0; i < n; i++) {
+    const e = G.lb[i], yy = y + 2 * RH + 4 + i * RH;
+    if (hl === i + 1) { ctx.fillStyle = 'rgba(255,210,74,0.30)'; ctx.fillRect(x - 6, yy - 8, 366, RH); }
     const col = hl === i + 1 ? '#fff6a0' : '#fff';
-    if (!e) { outlineText('#' + (i + 1) + '  ---', x, yy, f, '#7c8296', 'left', '#1c1a26', 2); continue; }
-    outlineText('#' + (i + 1), x, yy, f, col, 'left', '#1c1a26', 2);
+    if (!e) { outlineText('#' + (i + 1), cRank, yy, f, '#7c8296', 'left', '#1c1a26', 2); outlineText('---', cLv, yy, f, '#7c8296', 'right', '#1c1a26', 2); continue; }
+    outlineText('#' + (i + 1), cRank, yy, f, col, 'left', '#1c1a26', 2);
     outlineText(String(e.level), cLv, yy, f, '#cfe0ff', 'right', '#1c1a26', 2);
     outlineText(String(e.m), cM, yy, f, '#cfe0ff', 'right', '#1c1a26', 2);
     outlineText(String(e.score), cFood, yy, f, '#ffe680', 'right', '#1c1a26', 2);
     outlineText(fmtDate(e.t), cDate, yy, f, '#b8bfd6', 'left', '#1c1a26', 2);
-    if (hl === i + 1) outlineText('NEW', x + 250, yy, 'bold 10px "Courier New", monospace', '#8affb0', 'left', '#1c1a26', 2);
+    if (hl === i + 1) outlineText('NEW', x + 56, yy, f, '#8affb0', 'left', '#1c1a26', 2);
   }
 }
 
@@ -1452,41 +1473,94 @@ function drawSoundBlocked(y) {
   if (!Sfx.blocked() || document.hidden) return;
   const a = 0.75 + 0.25 * Math.sin(performance.now() / 180);
   ctx.globalAlpha = a;
-  const msg = touchMode ? 'NO SOUND? TAP THE GAME TO TURN IT ON' : 'NO SOUND? CLICK THE GAME TO TURN IT ON', w = 330;
-  ctx.fillStyle = '#1c1a26'; ctx.fillRect(W / 2 - w / 2 - 2, y - 2, w + 4, 22);
-  ctx.fillStyle = '#ffd24a'; ctx.fillRect(W / 2 - w / 2, y, w, 18);
-  ctx.font = 'bold 11px "Courier New", monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#1c1a26';
-  ctx.fillText(msg, W / 2, y + 10);
+  const msg = touchMode ? 'NO SOUND? TAP THE GAME TO TURN IT ON' : 'NO SOUND? CLICK THE GAME TO TURN IT ON', w = 332;
+  ctx.fillStyle = '#1c1a26'; ctx.fillRect(W / 2 - w / 2 - 2, y - 2, w + 4, 24);
+  ctx.fillStyle = '#ffd24a'; ctx.fillRect(W / 2 - w / 2, y, w, 20);
+  ctx.font = pfont(16); ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#1c1a26';
+  ctx.fillText(msg, W / 2, y + 11);
   ctx.globalAlpha = 1;
 }
+// ---- title screen: the level-1 street with Missy ready to go, a chunky tilted title and the owner's medallion.
+// Static art is baked once into an offscreen layer (hard-edged: alpha is thresholded).
+function hardenAlpha(c) {   // no anti-aliasing: every pixel fully on or off
+  const d = c.getImageData(0, 0, c.canvas.width, c.canvas.height), a = d.data;
+  for (let i = 3; i < a.length; i += 4) a[i] = a[i] >= 110 ? 255 : 0;
+  c.putImageData(d, 0, 0);
+}
+function newCanvas(w, h) { const c = document.createElement('canvas'); c.width = w; c.height = h; const x = c.getContext('2d'); x.imageSmoothingEnabled = false; return [c, x]; }
+// a line of big title text: vertical red-orange-yellow gradient, thick black outline, dark drop shadow; drawn rotated into c2
+function bigText(c2, str, cx, cy, ang, grad, outline, shadow) {
+  const [t, x] = newCanvas(360, 100), pad = 50;
+  x.font = pfont(48); x.textAlign = 'center'; x.textBaseline = 'middle';
+  const ox = 180, oy = 50;
+  x.fillStyle = '#000';
+  for (let dy = -outline; dy <= outline; dy++) for (let dx = -outline; dx <= outline; dx++) if (dx * dx + dy * dy <= outline * outline + 1) x.fillText(str, ox + dx, oy + dy);
+  const [sh, sx] = newCanvas(360, 100);   // shadow: the outlined silhouette, shifted down-right and darkened
+  sx.drawImage(t, shadow, shadow); sx.globalCompositeOperation = 'source-in'; sx.fillStyle = '#2a1030'; sx.fillRect(0, 0, 360, 100);
+  const [g, gx] = newCanvas(360, 100);    // gradient fill clipped to the glyphs
+  gx.font = x.font; gx.textAlign = 'center'; gx.textBaseline = 'middle'; gx.fillStyle = '#fff'; gx.fillText(str, ox, oy);
+  gx.globalCompositeOperation = 'source-in';
+  const gr = gx.createLinearGradient(0, oy - 16, 0, oy + 16); gr.addColorStop(0, '#e8262a'); gr.addColorStop(0.5, '#ff8a1c'); gr.addColorStop(1, '#ffe83a');
+  gx.fillStyle = gr; gx.fillRect(0, 0, 360, 100);
+  c2.save(); c2.translate(cx, cy); c2.rotate(ang); c2.imageSmoothingEnabled = false;
+  c2.drawImage(sh, -ox, -oy); c2.drawImage(t, -ox, -oy); c2.drawImage(g, -ox, -oy); c2.restore();
+}
+function plainTilt(c2, str, cx, cy, ang, col, oc) {
+  const [t, x] = newCanvas(340, 40);
+  x.font = pfont(16); x.textAlign = 'center'; x.textBaseline = 'middle';
+  x.fillStyle = oc; for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) if (dx || dy) x.fillText(str, 170 + dx, 20 + dy);
+  x.fillStyle = col; x.fillText(str, 170, 20);
+  c2.save(); c2.translate(cx, cy); c2.rotate(ang); c2.drawImage(t, -170, -20); c2.restore();
+}
+function medallion(c, cx, cy, r, bg, img, sx, sy, scale) {
+  c.fillStyle = '#7a1018'; c.beginPath(); c.arc(cx, cy, r + 8, 0, 7); c.fill();
+  c.fillStyle = '#ffd24a'; c.beginPath(); c.arc(cx, cy, r + 5, 0, 7); c.fill();
+  c.fillStyle = '#e8262a'; c.beginPath(); c.arc(cx, cy, r + 1, 0, 7); c.fill();
+  c.save(); c.beginPath(); c.arc(cx, cy, r - 2, 0, 7); c.clip();
+  c.fillStyle = bg; c.fillRect(cx - r, cy - r, r * 2, r * 2);
+  c.fillStyle = 'rgba(255,255,255,0.18)'; c.beginPath(); c.arc(cx - r * 0.3, cy - r * 0.4, r * 0.6, 0, 7); c.fill();
+  c.imageSmoothingEnabled = false;
+  c.drawImage(img, sx * 32, sy * 32, 32, 32, cx - 16 * scale, cy - 24 * scale + 4, 32 * scale, 32 * scale);
+  c.restore();
+}
+let titleLayer = null;
+function buildTitleLayer() {
+  const [B, b] = newCanvas(W, H);
+  bigText(b, "Missy's", 112, 40, -0.07, 0, 3, 4);
+  bigText(b, 'Big Day Out!', 170, 90, -0.07, 0, 3, 4);
+  hardenAlpha(b);
+  const [M, m] = newCanvas(W, H);
+  medallion(m, 372, 186, 50, '#5aa8e0', IMG.woman, 0, 0, 6);
+  hardenAlpha(m);
+  titleLayer = [B, M];
+}
 function drawTitle() {
-  ctx.fillStyle = 'rgba(20,24,44,0.28)'; ctx.fillRect(0, 0, W, H);
-  const bob = Math.sin(G.titleT * 2.2) * 3;
-  ctx.save(); ctx.translate(W / 2, 40 + bob); ctx.rotate(Math.sin(G.titleT * 1.3) * 0.015);
-  outlineText("Missy's", 0, 0, 'bold 50px "Courier New", monospace', '#fff', 'center', '#2c2a44', 8);
-  outlineText('Big Day Out!', 0, 46, 'bold 40px "Courier New", monospace', '#ffe9a8', 'center', '#2c2a44', 8);
-  ctx.restore();
+  if (!titleLayer) buildTitleLayer();
+  ctx.imageSmoothingEnabled = false;
+  const blink = Math.floor(G.titleT * 1.8) % 2 === 0;
   if (G.showLB) {
-    panel(150, 112, 340, 160);
-    drawLB(190, 126, 0);
-    outlineText('L: back    hold C: clear scores', W / 2, 286, 'bold 11px "Courier New", monospace', '#cfe0ff', 'center', '#1c1a26', 2);
-    drawClearBar(W / 2, 298);
+    ctx.fillStyle = 'rgba(20,24,44,0.35)'; ctx.fillRect(0, 0, W, H);
+    panel(110, 30, 420, 230);
+    drawLB(156, 46, 0, 10);
+    outlineText('L: back    hold C: clear scores', W - 8, 282, pfont(16), '#fff', 'right', '#1c1a26', 2);
+    drawClearBar(W - 120, 298);
     return;
   }
+  ctx.drawImage(titleLayer[0], 0, 0);
+  ctx.drawImage(titleLayer[1], 0, 0);
   if (G.audioTest) {
     drawAudioTest();
-    if (Math.floor(G.titleT * 1.8) % 2 === 0) outlineText('PRESS SPACE TO START', W / 2, 272, 'bold 18px "Courier New", monospace', '#fff', 'center');
-    if (Sfx.muted) outlineText('Sound is muted \u2014 press M', W / 2, 300, 'bold 13px "Courier New", monospace', '#ff9a9a', 'center', '#3a0c14', 3);
+    if (blink) outlineText('PRESS SPACE TO START', W / 2, 340, pfont(32), '#fff', 'center', '#7a1018', 6);
+    if (Sfx.muted) outlineText('Sound is muted \u2014 press M', W / 2, 300, pfont(16), '#ffd0d0', 'center', '#3a0c14', 3);
     return;
   }
-  wrapText(INTRO, 600, 'bold 12px "Courier New", monospace').forEach((l, i, a) => outlineText(l, W / 2, 118 + i * 14 - (a.length - 1) * 7, 'bold 12px "Courier New", monospace', '#fff', 'center'));
-  panel(130, 130, 380, 124);
-  const L = [['LEFT / RIGHT', 'move'], ['UP / SPACE', 'jump (hold = higher)'], ['DOWN', 'duck'], ['X', 'huff (scares parrots)'], ['P / ESC   M', 'pause   mute'], ['L', 'high scores']];
-  L.forEach((l, i) => { outlineText(l[0], 146, 148 + i * 17, 'bold 12px "Courier New", monospace', '#ffd24a', 'left', '#1c1a26', 2); outlineText(l[1], 494, 148 + i * 17, 'bold 12px "Courier New", monospace', '#fff', 'right', '#1c1a26', 2); });
-  if (Math.floor(G.titleT * 1.8) % 2 === 0) outlineText(touchMode ? 'TAP TO START' : 'CLICK OR PRESS SPACE TO START', W / 2, 272, 'bold 18px "Courier New", monospace', '#fff', 'center');
-  if (Sfx.muted) { ctx.fillStyle = '#7a1f2b'; ctx.fillRect(W / 2 - 150, 296, 300, 20); outlineText('Sound is muted \u2014 press M', W / 2, 306, 'bold 13px "Courier New", monospace', '#fff', 'center', '#3a0c14', 2); }
-  else outlineText(Sfx.blocked() ? '\u266A sound starts when you click' : '\u266A sound ON  (M: mute)', W - 8, H - 8, 'bold 10px "Courier New", monospace', '#cfe0ff', 'right', '#1c1a26', 2);
-  if (G.best) outlineText('BEST ' + G.best + '   LEVEL ' + G.bestLevel, W / 2, 292, 'bold 12px "Courier New", monospace', '#ffe680', 'center');
+  outlineText('OWNER', 372, 252, pfont(16), '#fff', 'center', '#1c1a26', 2);
+  // compact info, top right
+  if (!touchMode) outlineText('ARROWS move/duck  SPACE jump  X huff', W - 8, 12, pfont(16), '#fff', 'right', '#1c1a26', 2);
+  if (Sfx.muted) outlineText('Sound is muted \u2014 press M', W - 8, 32, pfont(16), '#ffb0b0', 'right', '#3a0c14', 3);
+  else outlineText((touchMode ? '' : 'L: high scores   ') + 'M: mute', W - 8, 32, pfont(16), '#cfe0ff', 'right', '#1c1a26', 2);
+  if (G.best) outlineText('BEST ' + G.best + '   LEVEL ' + G.bestLevel, W - 8, 52, pfont(16), '#ffe680', 'right', '#1c1a26', 3);
+  if (blink) outlineText(touchMode ? 'TAP TO START' : 'PRESS ANY KEY TO START', W / 2, 338, pfont(32), '#fff', 'center', '#7a1018', 6);
 }
 
 // ?scn=audiotest: a self-diagnosis panel on the title screen
@@ -1494,13 +1568,13 @@ const TEST_BTN = { x: 190, y: 156, w: 110, h: 26 };
 function drawAudioTest() {
   const b = TEST_BTN;
   panel(b.x - 30, b.y - 30, 290, 140);
-  outlineText('SOUND TEST', b.x + 6, b.y - 10, 'bold 11px "Courier New", monospace', '#ffd24a', 'left', '#1c1a26', 2);
+  outlineText('SOUND TEST', b.x + 6, b.y - 10, pfont(11), '#ffd24a', 'left', '#1c1a26', 2);
   ctx.fillStyle = '#2e7d4f'; ctx.fillRect(b.x, b.y, b.w, b.h); ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.strokeRect(b.x + 1, b.y + 1, b.w - 2, b.h - 2);
-  outlineText('Test sound', b.x + b.w / 2, b.y + b.h / 2 + 1, 'bold 12px "Courier New", monospace', '#fff', 'center', '#14301f', 2);
+  outlineText('Test sound', b.x + b.w / 2, b.y + b.h / 2 + 1, pfont(12), '#fff', 'center', '#14301f', 2);
   const st = Sfx.states();
   const rows = ['kit ctx: ' + (st.kit.join(',') || 'not created'), 'huff ctx: ' + (st.mine.join(',') || 'not created'), 'muted: ' + Sfx.muted,
     'music: ' + (Sfx.music.current() || 'none') + (Sfx.music.isPlaying() ? ' (playing)' : '')];
-  rows.forEach((r, i) => outlineText(r, b.x, b.y + 44 + i * 14, 'bold 10px "Courier New", monospace', '#cfe0ff', 'left', '#1c1a26', 2));
+  rows.forEach((r, i) => outlineText(r, b.x, b.y + 44 + i * 14, pfont(10), '#cfe0ff', 'left', '#1c1a26', 2));
 }
 function runAudioTest() {
   Sfx.unlock(); Sfx.sfx('eat'); Sfx.music.play('camptown');
@@ -1509,33 +1583,34 @@ function runAudioTest() {
 
 function drawOver() {
   ctx.fillStyle = 'rgba(20,24,44,0.35)'; ctx.fillRect(0, 0, W, H);
-  panel(30, 24, 580, 208);
-  outlineText('Oh, Missy!', 168, 56, 'bold 34px "Courier New", monospace', '#fff', 'center', '#2c2a44', 6);
-  outlineText(G.reason === 'caught' ? 'She caught you!' : 'Squished by the street!', 168, 86, 'bold 12px "Courier New", monospace', '#ffb0b0', 'center', '#1c1a26', 2);
-  outlineText('Food  ' + G.score, 168, 114, 'bold 20px "Courier New", monospace', '#ffe680', 'center');
-  outlineText('Level ' + G.level + '  ' + Math.min(LEVEL_M, Math.floor(G.dist)) + ' m', 168, 138, 'bold 12px "Courier New", monospace', '#cfe0ff', 'center', '#1c1a26', 2);
-  outlineText(G.rank === 1 ? 'NEW HIGH SCORE!' : G.rank > 0 ? 'NEW #' + G.rank + '!' : 'Best  ' + G.best, 168, 162, 'bold 14px "Courier New", monospace', G.rank > 0 ? '#8affb0' : '#fff', 'center');
-  if (G.overT > 0.6 && Math.floor(G.overT * 1.8) % 2 === 0) outlineText(touchMode ? 'TAP TO TRY AGAIN' : 'SPACE / ENTER: try again', 168, 192, 'bold 12px "Courier New", monospace', '#fff', 'center', '#1c1a26', 2);
-  outlineText('hold C: clear scores', 168, 212, 'bold 10px "Courier New", monospace', '#9aa3be', 'center', '#1c1a26', 2);
-  drawClearBar(168, 222);
-  drawLB(340, 44, G.rank);
+  panel(14, 16, 612, 252);
+  const cx = 142;
+  outlineText('Oh, Missy!', cx, 52, pfont(32), '#fff', 'center', '#2c2a44', 6);
+  outlineText(G.reason === 'caught' ? 'She caught you!' : 'Squished by the street!', cx, 90, pfont(16), '#ffb0b0', 'center', '#1c1a26', 2);
+  outlineText('FOOD ' + G.score, cx, 126, pfont(32), '#ffe680', 'center', '#1c1a26', 3);
+  outlineText('Level ' + G.level + '   ' + Math.min(LEVEL_M, Math.floor(G.dist)) + ' m', cx, 158, pfont(16), '#cfe0ff', 'center', '#1c1a26', 2);
+  outlineText(G.rank === 1 ? 'NEW HIGH SCORE!' : G.rank > 0 ? 'NEW #' + G.rank + '!' : 'Best  ' + G.best, cx, 184, pfont(16), G.rank > 0 ? '#8affb0' : '#fff', 'center', '#1c1a26', 2);
+  if (G.overT > 0.6 && Math.floor(G.overT * 1.8) % 2 === 0) outlineText(touchMode ? 'TAP TO TRY AGAIN' : 'SPACE / ENTER: try again', cx, 218, pfont(16), '#fff', 'center', '#1c1a26', 2);
+  outlineText('hold C: clear scores', cx, 244, pfont(16), '#9aa3be', 'center', '#1c1a26', 2);
+  drawClearBar(cx, 258);
+  drawLB(262, 36, G.rank, 10);
 }
 
 function drawWin() {
   if (G.phase === 'walk' || G.lieT < 1.4) return;
   ctx.globalAlpha = clamp((G.lieT - 1.4) / 0.4, 0, 1);
-  panel(170, 44, 300, 150);
-  outlineText('Level ' + G.level + ' complete!', W / 2, 74, 'bold 24px "Courier New", monospace', '#fff', 'center', '#2c2a44', 5);
-  outlineText('Food this level   ' + (G.score - G.levelStart), W / 2, 112, 'bold 14px "Courier New", monospace', '#ffe680', 'center');
-  outlineText('Total food        ' + G.score, W / 2, 134, 'bold 14px "Courier New", monospace', '#ffe680', 'center');
-  if (G.lieT > 2.2 && Math.floor(G.lieT * 1.8) % 2 === 0) outlineText((touchMode ? 'TAP' : 'SPACE') + ' for level ' + (G.level + 1), W / 2, 170, 'bold 14px "Courier New", monospace', '#fff', 'center', '#1c1a26', 3);
+  panel(150, 40, 340, 172);
+  outlineText('Level ' + G.level + ' complete!', W / 2, 72, pfont(32), '#fff', 'center', '#2c2a44', 5);
+  outlineText('Food this level  ' + (G.score - G.levelStart), W / 2, 118, pfont(16), '#ffe680', 'center');
+  outlineText('Total food       ' + G.score, W / 2, 142, pfont(16), '#ffe680', 'center');
+  if (G.lieT > 2.2 && Math.floor(G.lieT * 1.8) % 2 === 0) outlineText((touchMode ? 'TAP' : 'SPACE') + ' for level ' + (G.level + 1), W / 2, 184, pfont(16), '#fff', 'center', '#1c1a26', 3);
   ctx.globalAlpha = 1;
 }
 
 function drawPause() {
   ctx.fillStyle = 'rgba(15,18,30,0.6)'; ctx.fillRect(0, 0, W, H);
-  outlineText('PAUSED', W / 2, 150, 'bold 40px "Courier New", monospace', '#fff', 'center', '#2c2a44', 7);
-  outlineText(touchMode ? 'tap to resume' : 'press SPACE, P or Esc to resume', W / 2, 192, 'bold 14px "Courier New", monospace', '#ffe9a8', 'center');
+  outlineText('PAUSED', W / 2, 150, pfont(48), '#fff', 'center', '#2c2a44', 7);
+  outlineText(touchMode ? 'tap to resume' : 'press SPACE, P or Esc to resume', W / 2, 202, pfont(16), '#ffe9a8', 'center');
 }
 
 function render() {
@@ -1566,7 +1641,7 @@ function press(action) {
   ensureAudio();
   if (paused && action === 'jump' && !document.body.classList.contains('portrait')) { togglePause(); return; }  // Space unpauses
   if (G.state === 'title') { if (action === 'jump' && !G.showLB) startGame(); else if (action === 'jump') { G.showLB = false; startGame(); } return; }
-  if (G.state === 'over') { if (action === 'jump' && G.overT > 0.6) startGame(); return; }
+  if (G.state === 'over') { if (action === 'jump' && G.overT > 0.6) goToTitle(); return; }
   if (G.state === 'win') { if (action === 'jump' && G.lieT > 2.2 && !paused) startLevel(G.level + 1); return; }
   if (paused || G.state !== 'play') return;
   if (action === 'jump') { G.jumpBuf = BUFFER; G.jumpHeld = true; }
@@ -1588,6 +1663,9 @@ addEventListener('keydown', e => {
   else if (c === 'ArrowDown') kb.down = true;
   else if (c === 'KeyC') kb.clear = true;
   if (e.repeat) return;
+  if (G.state === 'title' && !G.audioTest && !/^(Key[ML]|Shift|Control|Alt|Meta|Caps|Tab|F\d|OS|ContextMenu|NumLock)/.test(c) && !(c === 'KeyC' && G.showLB)) { G.showLB = false; startGame(); return; }
+  // game over and level complete also continue on any key (M mutes, C clears scores)
+  if ((G.state === 'over' || G.state === 'win') && !paused && !/^(Key[MCP]|Escape|Shift|Control|Alt|Meta|Caps|Tab|F\d|OS|ContextMenu|NumLock)/.test(c)) { press('jump'); return; }
   if (c === 'Space' || c === 'ArrowUp') press('jump');
   else if (c === 'Enter' && (G.state === 'over' || G.state === 'title')) press('jump');
   else if (c === 'KeyX') press('huff');
@@ -1696,14 +1774,15 @@ function frame(ts) {
 
 async function init() {
   ctx.fillStyle = '#14161d'; ctx.fillRect(0, 0, W, H);
-  ctx.fillStyle = '#fff'; ctx.font = 'bold 20px monospace'; ctx.textAlign = 'center'; ctx.fillText('Loading...', W / 2, H / 2);
+  ctx.fillStyle = '#fff'; ctx.font = '16px monospace'; ctx.textAlign = 'center'; ctx.fillText('Loading...', W / 2, H / 2);
   try { await loadAll(); } catch (e) { ctx.fillText('Failed to load: ' + e, W / 2, H / 2 + 30); throw e; }
   buildScenery(1); layoutBuildings(1); layoutDecor(1); layoutFG(1); OBST = obstacleDefs();
   G.cfg = levelCfg(1); G.toilet = { blink: 0, blinkT: 3, frame: 0 };
   G.dog = newDog(); G.wm = newWoman(); G.lb = loadLB();
-  G.state = 'title'; G.titleT = 0; G.cam = 300;
-  G.dog.x = 300 + 340; G.wm.over = true; G.wm.sx = 240; G.wm.flip = false;
+  G.state = 'title'; G.titleT = 0; G.cam = 0;
+  G.wm.over = true; G.wm.sx = 240; G.wm.flip = false;
   debugRun();
+  try { Sfx.unlock(); if (G.state === 'title') Sfx.music.playLevel(1); } catch (e) {}   // title song; browsers may still block it until the first gesture
   requestAnimationFrame(frame);
 }
 init();

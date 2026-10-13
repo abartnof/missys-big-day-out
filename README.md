@@ -58,4 +58,5 @@ these creators and keeps their own terms; see `CREDITS.md`:
 - Missy: [2D Pixel Art Fox Sprites](https://elthen.itch.io/2d-pixel-art-fox-sprites) by Elthen, recolored
 - The owner: [MiniFolks - Villagers](https://lyaseek.itch.io/minifvillagers) by LYASeeK
 - Food: [Pixel Mart](https://ghostpixxells.itch.io/pixel-mart) by ghostpixxells
+- Font: [DotGothic16](https://fonts.google.com/specimen/DotGothic16) by Fontworks (SIL Open Font License)
 - Music: public-domain melodies (Foster, Joplin, Rossini, Grieg, Brahms, Bishop and more), arranged as chiptunes
