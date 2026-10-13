@@ -1,17 +1,12 @@
 # Missy's Big Day Out
 
-A tiny browser game: Missy, a cream cocker spaniel, is let loose on a city street. The street auto-scrolls,
-so keep ahead of the left screen edge, eat everything you can, dodge the parrots, and don't let her owner catch you.
+**[Play it in your browser](https://abartnof.github.io/missys-big-day-out/)**, or to play
+offline, save [the page](https://github.com/abartnof/missys-big-day-out/raw/main/missys-big-day-out.html)
+(right-click, *Save Link As*) and open it.
 
-Plain HTML5 canvas + vanilla JS. No build step needed to play, no libraries, no network requests.
-
-## Play
-
-- **Download and double-click:** `dist/missys-big-day-out.html` is a single self-contained file that works offline.
-- **Run from source:** `python3 -m http.server` in this folder, then open http://localhost:8000
-  (opening `index.html` directly from disk works too).
-- **GitHub Pages:** Settings -> Pages -> "Deploy from a branch" -> branch `main`, folder `/ (root)`.
-  The root `index.html` loads `game.js`, `audio.js` and `assets/` directly.
+Missy, a cream cocker spaniel, is loose on a city street. The street auto-scrolls, so keep
+ahead of the left screen edge, eat everything you can, dodge the parrots, and don't let her
+owner catch you.
 
 ## Controls
 
@@ -32,12 +27,27 @@ Touch: on-screen buttons (left, right, duck, jump, huff); tapping the game also 
 - Obstacles are solid: climb on top of them. Get squeezed between one and the left screen edge and it's over.
 - Every so often the owner shouts something and charges across the street. Touch her and it's over.
 
-## Build the single file
+## How it's made
+
+The whole game is one self-contained page, `missys-big-day-out.html`: plain HTML5 canvas and
+vanilla JS with the scripts inlined and every image embedded, so it makes no network requests.
+It's built from the readable sources in `src/`:
 
 ```
-python3 -I tools/build_single.py     # writes dist/missys-big-day-out.html
-python3 -I tools/pack_assets.py      # (only if assets_raw/ changes) re-copies assets/, recolors parrots
+python3 -I tools/build_single.py   # src/ -> missys-big-day-out.html
 ```
 
-Layout: `index.html`, `game.js`, `audio.js` (synthesized sounds), `assets/` (only what the game uses),
-`assets_raw/` (untouched source art), `tools/` (asset prep and the single-file builder).
+To work on the sources directly, open `src/index.html` (or serve the folder with
+`python3 -m http.server`). Commit the rebuilt `missys-big-day-out.html` along with any
+source change; GitHub Pages serves it as-is.
+
+`tools/pack_assets.py` and `tools/recolor_fox.py` regenerate `src/assets/` from the original
+asset packs, which are not in this repo (they go in `assets_raw/`).
+
+## Credits
+
+- Dog: [2D Pixel Art Fox Sprites](https://elthen.itch.io/2d-pixel-art-fox-sprites) by Elthen, recolored
+- Owner: Minifolks Villagers
+- Street: [Pixel Streets Pack](https://fadinfadin.itch.io/pixelstreetspack) by fadinfadin
+- Food: Pixel Mart
+- Parrots: Free Animal Pack, recolored

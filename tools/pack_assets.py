@@ -1,4 +1,4 @@
-"""Copy the non-dog assets the game uses into assets/ and emit assets/props.json
+"""Copy the non-dog assets the game uses into src/assets/ and emit src/assets/props.js
 (alpha-trimmed rects of props inside general.png). Re-runnable.
 Usage: python3 -I tools/pack_assets.py
 """
@@ -8,7 +8,7 @@ from PIL import Image
 
 ROOT = Path(__file__).resolve().parent.parent
 RAW = ROOT / "assets_raw" / "dog_game_items"
-OUT = ROOT / "assets"
+OUT = ROOT / "src" / "assets"
 (OUT / "items").mkdir(parents=True, exist_ok=True)
 
 for n in "dry_dog_food meat1 bacon sausage_p fish salmon rubber_duck milk_chocolate red_grape green_grape wine_red coffee_bag".split():

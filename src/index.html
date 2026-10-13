@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Missy's Big Day Out</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #14161d; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; }
+  #wrap { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); }
+  canvas { display: block; image-rendering: pixelated; image-rendering: crisp-edges; background: #000; }
+  .tbtn { position: absolute; bottom: 4%; width: 17%; aspect-ratio: 1; border-radius: 50%; border: 3px solid #fff8; background: #1d2433b8; color: #fff;
+          font: bold 3.2vmin "Courier New", monospace; display: none; align-items: center; justify-content: center; touch-action: none; }
+  .tbtn:active, .tbtn.on { background: #e0a030cc; }
+  .tbtn { width: 12%; font-size: 2.8vmin; }
+  #bLeft { left: 2%; } #bRight { left: 15%; }
+  #bHuff { right: 2%; } #bJump { right: 15%; } #bDuck { right: 28%; }
+  body.touch .tbtn { display: flex; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="c" width="640" height="360"></canvas>
+  <div class="tbtn" id="bLeft">&#9664;</div>
+  <div class="tbtn" id="bRight">&#9654;</div>
+  <div class="tbtn" id="bDuck">DUCK</div>
+  <div class="tbtn" id="bJump">JUMP</div>
+  <div class="tbtn" id="bHuff">HUFF</div>
+</div>
+<script src="audio.js"></script>
+<script src="assets/props.js"></script>
+<script src="game.js"></script>
+</body>
+</html>
