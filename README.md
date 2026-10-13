@@ -4,7 +4,7 @@
 offline, save [the page](https://github.com/abartnof/missys-big-day-out/raw/main/missys-big-day-out.html)
 (right-click, *Save Link As*) and open it.
 
-Missy, a cream cocker spaniel, is loose on a city street. The street auto-scrolls, so keep
+Missy, a little white dog, is loose on a city street. The street auto-scrolls, so keep
 ahead of the left screen edge, eat everything you can, dodge the parrots, and don't let her
 owner catch you.
 
@@ -48,10 +48,15 @@ source change; GitHub Pages serves it as-is.
 `tools/pack_assets.py` and `tools/recolor_fox.py` regenerate `src/assets/` from the original
 asset packs, which are not in this repo (they go in `assets_raw/`).
 
-## Credits
+## Credits and license
 
-- Dog: [2D Pixel Art Fox Sprites](https://elthen.itch.io/2d-pixel-art-fox-sprites) by Elthen, recolored
-- Owner: Minifolks Villagers
+The code, sound and music arrangements are MIT-licensed (`LICENSE`). The pixel art
+comes from these creators and keeps their own terms; see `CREDITS.md`:
+
+- Missy: [2D Pixel Art Fox Sprites](https://elthen.itch.io/2d-pixel-art-fox-sprites) by Elthen, recolored
+- The owner: [MiniFolks - Villagers](https://lyaseek.itch.io/minifvillagers) by LYASeeK
+- Food: [Pixel Mart](https://ghostpixxells.itch.io/pixel-mart) by ghostpixxells
 - Street: [Pixel Streets Pack](https://fadinfadin.itch.io/pixelstreetspack) by fadinfadin
-- Food: Pixel Mart
-- Parrots: Free Animal Pack, recolored
+- Parrots, bunny, kitty and frog: [Animal Mega Pack](https://toffeecraft.itch.io/animal-mega-pack) by ToffeeCraft, parrots recolored
+- Bones: [Dog Mega Pack](https://toffeecraft.itch.io/dog-mega-bundle) by ToffeeCraft
+- Music: public-domain melodies (Foster, Joplin, Rossini, Grieg, Brahms, Bishop and more), arranged as chiptunes

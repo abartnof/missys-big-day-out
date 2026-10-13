@@ -1686,9 +1686,9 @@ function updatePlay(dt) {
       const it = G.parrotPlan[G.parrotIdx], first = !G.seen[it.kind];
       if (G.cam > NOSPAWN_X - W) { G.parrotIdx = G.parrotPlan.length; break; }
       if (G.solo || (first && threatBusy())) break;          // a new type is introduced alone
-      if (G.parrotGap > 0) break;
+      if (G.parrotGap > 0) break;                            // parrots held back (e.g. by a solo intro) come out one at a time, not as a stack
       const herTurn = G.womanPlan[G.womanIdx] && G.cam >= G.womanPlan[G.womanIdx].at;
-      if (G.level <= 2 && (G.wm.mode !== 'none' || herTurn)) break;   // early levels: parrots hold off while her charge is due or under way                            // parrots held back (e.g. by a solo intro) come out one at a time, not as a stack
+      if (G.level <= 2 && (G.wm.mode !== 'none' || herTurn)) break;   // early levels: parrots hold off while her charge is due or under way
       G.parrotIdx++; beginParrotWarn(it, first);
       G.parrotGap = Math.max(0.6, 1.3 - 0.1 * (G.level - 1));
     }
