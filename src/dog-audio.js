@@ -14,6 +14,7 @@
  *   Brahms' Lullaby (1868): the dog falls asleep by the toilet
  *   Home! Sweet Home! (Henry Bishop, 1823): game over
  *   Shave and a Haircut (1899): new high score jingle
+ *   Rondo alla Turca, K. 331 (Wolfgang Amadeus Mozart, 1783): the title screen
  *
  * Quick use:
  *   DogAudio.unlock();                    // call on the first tap or keypress
@@ -444,6 +445,33 @@
   const MK_ABASS = [q4('B2', 'F#3', 'B2', 'F#3'), q4('B2', 'F#3', 'B2', 'F#3'), q4('B2', 'F#3', 'B2', 'F#3'), q4('D3', 'A3', 'D3', 'A3')];
   const MK_BBASS = [q4('F#3', 'C#4', 'F#3', 'C#4'), q4('D3', 'A#3', 'F#3', 'C#4'), q4('F#3', 'C#4', 'F#3', 'C#4'), q4('D3', 'A#3', 'F#3', 'C#4')];
 
+  // Title screen: Rondo alla Turca ("Turkish March"), from the Piano Sonata No. 11, K. 331,
+  // Wolfgang Amadeus Mozart (1783). A minor, 2/4. The opening theme, with a pickup.
+  const s16 = (str) => str.split(' ').map((n) => [n, 0.25]);
+  const TURKISH_MELODY = [
+    ...s16('B4 A4 G#4 A4'),
+    ['C5', 0.5], [null, 0.5], ...s16('D5 C5 B4 C5'),
+    ['E5', 0.5], [null, 0.5], ...s16('F5 E5 D#5 E5'),
+    ...s16('B5 A5 G#5 A5 B5 A5 G#5 A5'),
+    ['C6', 1], ['A5', 0.5], ['C6', 0.5],
+    ['B5', 0.5], ['A5', 0.5], ['G5', 0.5], ['A5', 0.5],
+    ['B5', 0.5], ['A5', 0.5], ['G5', 0.5], ['A5', 0.5],
+    ['B5', 0.5], ['A5', 0.5], ['G5', 0.5], ['F#5', 0.5],
+    ['E5', 1], ...s16('B4 A4 G#4 A4'),
+    ['C5', 0.5], [null, 0.5], ...s16('D5 C5 B4 C5'),
+    ['E5', 0.5], [null, 0.5], ...s16('F5 E5 D#5 E5'),
+    ...s16('B5 A5 G#5 A5 B5 A5 G#5 A5'),
+    ['C6', 1], ['A5', 0.5], ['B5', 0.5],
+    ['C6', 0.5], ['B5', 0.5], ['A5', 0.5], ['G#5', 0.5],
+    ['A5', 0.5], ['E5', 0.5], ['F5', 0.5], ['D5', 0.5],
+    ['C5', 1], ['B4', 0.75], ['A4', 0.25],
+    ['A4', 1, 0.9], [null, 1],
+  ];
+  // left hand: one bar per chord, root on the beat and the chord's fifth on the off-beat
+  const TK_CHORDS = 'Am Am E Am Em Em B7 Em Am Am E Am E Dm E Am'.split(' ');
+  const TK = { Am: ['A2', 'E3'], E: ['E2', 'B2'], Em: ['E2', 'B2'], B7: ['B2', 'F#3'], Dm: ['D3', 'A3'] };
+  const TK_BASS = [[null, 1], ...TK_CHORDS.flatMap((c) => [[TK[c][0], 0.5, 0.6], [TK[c][1], 0.5, 0.5], [TK[c][0], 0.5, 0.6], [TK[c][1], 0.5, 0.5]]), [null, 1]];
+
   // Toilet appears: The Blue Danube, Johann Strauss II (1866). C major, 3/4.
   const DANUBE_MELODY = [
     ['C4', 1],
@@ -509,6 +537,11 @@
     const dn = splitHands(DANUBE_LH, 0.6, 0.4);
 
     return {
+      turkish: compileTrack(126, true, [
+        { wave: 'pulse25', vol: 0.2, gate: 0.78, notes: TURKISH_MELODY },
+        { wave: 'triangle', vol: 0.5, notes: TK_BASS },
+        { kind: 'hat', vol: 0.05, pattern: [[0, 1], ...Array(TK_CHORDS.length).fill([[0, 0.5], [1, 0.5], [0, 0.5], [1, 0.5]]).flat(), [0, 1]] },
+      ]),
       camptown: compileTrack(132, true, [
         { wave: 'pulse25', vol: 0.22, notes: CAMPTOWN_MELODY },
         { wave: 'triangle', vol: 0.5, notes: ctBass },
@@ -559,6 +592,7 @@
   // Gameplay songs by level; level 6 starts the rotation over (a bit faster each level).
   const GAMEPLAY = ['camptown', 'weasel', 'entertainer', 'williamtell', 'mountainking'];
   const TITLES = {
+    turkish: 'Rondo alla Turca',
     camptown: 'Camptown Races', weasel: 'Pop Goes the Weasel', entertainer: 'The Entertainer',
     williamtell: 'William Tell Overture', mountainking: 'In the Hall of the Mountain King',
     danube: 'The Blue Danube', lullaby: "Brahms' Lullaby", home: 'Home! Sweet Home!',

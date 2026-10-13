@@ -59,4 +59,4 @@ these creators and keeps their own terms; see `CREDITS.md`:
 - The owner: [MiniFolks - Villagers](https://lyaseek.itch.io/minifvillagers) by LYASeeK
 - Food: [Pixel Mart](https://ghostpixxells.itch.io/pixel-mart) by ghostpixxells
 - Font: [DotGothic16](https://fonts.google.com/specimen/DotGothic16) by Fontworks (SIL Open Font License)
-- Music: public-domain melodies (Foster, Joplin, Rossini, Grieg, Brahms, Bishop and more), arranged as chiptunes
+- Music: public-domain melodies (Mozart, Foster, Joplin, Rossini, Grieg, Brahms, Bishop and more), arranged as chiptunes

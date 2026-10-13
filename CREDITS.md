@@ -32,6 +32,7 @@ heart, clouds, pavement and on-screen buttons are drawn in code at runtime.
 
 All melodies are public domain, arranged for this game:
 
+- Rondo alla Turca ("Turkish March"), K. 331, Wolfgang Amadeus Mozart (1783)
 - Camptown Races, Stephen Foster (1850)
 - Pop Goes the Weasel, traditional (1850s)
 - The Entertainer, Scott Joplin (1902)

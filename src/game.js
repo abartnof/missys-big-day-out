@@ -295,12 +295,14 @@ function newWoman() {
 }
 
 // back to the title screen (after game over). The game-over song is allowed to finish; then the title song loops.
+// the title loops Mozart's Rondo alla Turca; starting a run switches to the level song
+function playTitleSong() { if (Sfx.music.current() !== 'turkish') Sfx.music.play('turkish'); }
 function goToTitle() {
   G.state = 'title'; G.titleT = 0; G.showLB = false; G.cam = 0; G.dist = 0; G.level = 1; G.cfg = levelCfg(1);
   buildScenery(1); layoutBuildings(1); layoutDecor(1); layoutFG(1);
   G.entities = []; G.parts = []; G.texts = []; G.mimic = null; G.critter = null; G.shake = 0;
   G.dog = newDog(); G.wm = newWoman(); G.wm.over = true; G.wm.sx = 240; G.wm.flip = false;
-  if (Sfx.music.current() !== 'home' || G.homeDone) Sfx.music.playLevel(1);
+  if (Sfx.music.current() !== 'home' || G.homeDone) playTitleSong();
 }
 // a fresh run: level 1, score 0
 function startGame() {
@@ -577,7 +579,7 @@ function endGame(reason) {
   if (reason === 'caught') Sfx.sfx('caught');
   const hi = G.rank === 1;
   G.homeDone = false;
-  Sfx.music.play('home', { delay: hi ? 3.9 : 1.8, onEnd: () => { G.homeDone = true; if (G.state === 'title') Sfx.music.playLevel(1); } });
+  Sfx.music.play('home', { delay: hi ? 3.9 : 1.8, onEnd: () => { G.homeDone = true; if (G.state === 'title') playTitleSong(); } });
   if (hi) setTimeout(() => Sfx.sfx('new_high_score'), 1700);
 }
 function crush() {  // Missy is squeezed against the left screen edge: indignant HUFF, brief freeze, then game over
@@ -1782,7 +1784,7 @@ async function init() {
   G.state = 'title'; G.titleT = 0; G.cam = 0;
   G.wm.over = true; G.wm.sx = 240; G.wm.flip = false;
   debugRun();
-  try { Sfx.unlock(); if (G.state === 'title') Sfx.music.playLevel(1); } catch (e) {}   // title song; browsers may still block it until the first gesture
+  try { Sfx.unlock(); if (G.state === 'title') playTitleSong(); } catch (e) {}   // title song; browsers may still block it until the first gesture
   requestAnimationFrame(frame);
 }
 init();
