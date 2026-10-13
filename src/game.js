@@ -1174,7 +1174,8 @@ function drawHUD() {
   ctx.drawImage(IMG.toilet, 0, 0, 32, 32, bx + bw + 3, 12, 20, 20);
   outlineText('FOOD ' + String(G.score).padStart(4, '0'), W / 2 + 20, 14, 'bold 18px "Courier New", monospace', '#fff', 'center');
   outlineText('BEST ' + String(G.best).padStart(4, '0') + '  LV ' + G.bestLevel, W - 10, 11, 'bold 11px "Courier New", monospace', '#ffe680', 'right', '#1c1a26', 3);
-  outlineText(Sfx.muted ? '\u266A MUTED (M)   P: pause' : '\u266A ON   M: mute   P: pause', W - 10, 26, 'bold 10px "Courier New", monospace', '#cfe0ff', 'right', '#1c1a26', 2);
+  outlineText(Sfx.muted ? '\u266A MUTED (M)   P: pause' : Sfx.blocked() ? '\u266A OFF: CLICK   P: pause' : '\u266A ON   M: mute   P: pause', W - 10, 26, 'bold 10px "Courier New", monospace', '#cfe0ff', 'right', '#1c1a26', 2);
+  if (!paused && G.state !== 'title') drawSoundBlocked(46);
   if (G.bannerT > 0 && G.state === 'play') {   // run intro banner, fades out
     const a = clamp(G.bannerT / 0.9, 0, 1) * clamp((3.4 - G.bannerT) / 0.3, 0, 1);
     ctx.globalAlpha = a;
@@ -1230,6 +1231,18 @@ function drawClearBar(cx, y) {
   }
 }
 
+// Safari may keep audio locked after a keypress; only a click is sure to unlock it. Say so on screen.
+function drawSoundBlocked(y) {
+  if (!Sfx.blocked() || document.hidden) return;
+  const a = 0.75 + 0.25 * Math.sin(performance.now() / 180);
+  ctx.globalAlpha = a;
+  const msg = touchMode ? 'NO SOUND? TAP THE GAME TO TURN IT ON' : 'NO SOUND? CLICK THE GAME TO TURN IT ON', w = 330;
+  ctx.fillStyle = '#1c1a26'; ctx.fillRect(W / 2 - w / 2 - 2, y - 2, w + 4, 22);
+  ctx.fillStyle = '#ffd24a'; ctx.fillRect(W / 2 - w / 2, y, w, 18);
+  ctx.font = 'bold 11px "Courier New", monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#1c1a26';
+  ctx.fillText(msg, W / 2, y + 10);
+  ctx.globalAlpha = 1;
+}
 function drawTitle() {
   ctx.fillStyle = 'rgba(20,24,44,0.28)'; ctx.fillRect(0, 0, W, H);
   const bob = Math.sin(G.titleT * 2.2) * 3;
@@ -1254,9 +1267,9 @@ function drawTitle() {
   panel(130, 130, 380, 124);
   const L = [['LEFT / RIGHT', 'move'], ['UP / SPACE', 'jump (hold = higher)'], ['DOWN', 'duck'], ['X', 'huff (scares parrots)'], ['P / ESC   M', 'pause   mute'], ['L', 'high scores']];
   L.forEach((l, i) => { outlineText(l[0], 146, 148 + i * 17, 'bold 12px "Courier New", monospace', '#ffd24a', 'left', '#1c1a26', 2); outlineText(l[1], 494, 148 + i * 17, 'bold 12px "Courier New", monospace', '#fff', 'right', '#1c1a26', 2); });
-  if (Math.floor(G.titleT * 1.8) % 2 === 0) outlineText(touchMode ? 'TAP TO START' : 'PRESS SPACE TO START', W / 2, 272, 'bold 18px "Courier New", monospace', '#fff', 'center');
+  if (Math.floor(G.titleT * 1.8) % 2 === 0) outlineText(touchMode ? 'TAP TO START' : 'CLICK OR PRESS SPACE TO START', W / 2, 272, 'bold 18px "Courier New", monospace', '#fff', 'center');
   if (Sfx.muted) { ctx.fillStyle = '#7a1f2b'; ctx.fillRect(W / 2 - 150, 296, 300, 20); outlineText('Sound is muted \u2014 press M', W / 2, 306, 'bold 13px "Courier New", monospace', '#fff', 'center', '#3a0c14', 2); }
-  else outlineText('\u266A sound ON  (M: mute)', W - 8, H - 8, 'bold 10px "Courier New", monospace', '#cfe0ff', 'right', '#1c1a26', 2);
+  else outlineText(Sfx.blocked() ? '\u266A sound starts when you click' : '\u266A sound ON  (M: mute)', W - 8, H - 8, 'bold 10px "Courier New", monospace', '#cfe0ff', 'right', '#1c1a26', 2);
   if (G.best) outlineText('BEST ' + G.best + '   LEVEL ' + G.bestLevel, W / 2, 292, 'bold 12px "Courier New", monospace', '#ffe680', 'center');
 }
 
@@ -1379,7 +1392,7 @@ document.addEventListener('visibilitychange', () => {
   else if (!paused) Sfx.resume();
 });
 // Safari is strict about user activation: resume synchronously inside every gesture handler
-for (const ev of ['pointerdown', 'mousedown', 'click', 'touchend', 'touchstart']) addEventListener(ev, () => ensureAudio(), true);
+for (const ev of ['pointerdown', 'mousedown', 'click', 'touchend', 'touchstart', 'keyup']) addEventListener(ev, () => ensureAudio(), true);
 document.addEventListener('contextmenu', e => e.preventDefault());
 // Mouse (desktop): click the game to jump / start / restart, right-click to huff.
 cv.addEventListener('pointerdown', e => {

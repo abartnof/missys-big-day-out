@@ -96,6 +96,9 @@ const Sfx = (() => {
     voice,
     unlock() { A.unlock(); unlocked = true; ctx(); },
     states() { return { kit: ALL.filter(c => c !== hctx).map(c => c.state), mine: hctx ? [hctx.state] : [] }; },
+    // True when sound should be playing but the browser hasn't let it start yet (Safari can refuse a
+    // keypress as permission; a click always works). Before any gesture there is no context at all.
+    blocked() { return !A.isMuted() && (ALL.length === 0 || ALL.some(c => c.state !== 'running')); },
     get muted() { return A.isMuted(); },
     toggle() {
       A.setMuted(!A.isMuted());
