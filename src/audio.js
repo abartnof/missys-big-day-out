@@ -2,9 +2,18 @@
 // The kit has no "huff", so that one breathy noise burst is synthesized here.
 const Sfx = (() => {
   const A = window.DogAudio;
-  let hctx = null;
+  // track every AudioContext created (the kit's and ours) so the title's sound test can report their states
+  const ALL = [];
+  const Orig = window.AudioContext || window.webkitAudioContext;
+  if (Orig) {
+    const Shim = function (...args) { const c = new Orig(...args); ALL.push(c); return c; };
+    Shim.prototype = Orig.prototype;
+    window.AudioContext = Shim;
+  }
+  let hctx = null, unlocked = false;
   try { A.setMuted(localStorage.getItem('missys_mute') === '1'); } catch (e) {}
-  function ctx() {
+  function ctx() {                 // our own context exists only after a user gesture (see unlock)
+    if (!unlocked) return null;
     if (!hctx) { try { hctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return null; } }
     if (hctx.state === 'suspended') hctx.resume();
     return hctx;
@@ -85,7 +94,8 @@ const Sfx = (() => {
   }
   return {
     voice,
-    unlock() { A.unlock(); },
+    unlock() { A.unlock(); unlocked = true; ctx(); },
+    states() { return { kit: ALL.filter(c => c !== hctx).map(c => c.state), mine: hctx ? [hctx.state] : [] }; },
     get muted() { return A.isMuted(); },
     toggle() {
       A.setMuted(!A.isMuted());

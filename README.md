@@ -12,10 +12,10 @@ owner catch you.
 
 | Action | Keys |
 | --- | --- |
-| Move | Left / Right or A / D |
-| Jump (hold = higher) | Up / W / Space |
-| Duck (slow creep, can't jump) | Down / S |
-| Huff (scares parrots) | X / K |
+| Move | Left / Right arrows |
+| Jump (hold = higher) | Up arrow / Space |
+| Duck (slow creep, can't jump) | Down arrow |
+| Huff (scares parrots) | X |
 | Pause / Mute | P or Esc / M |
 | High scores (title screen) | L (hold C to clear) |
 

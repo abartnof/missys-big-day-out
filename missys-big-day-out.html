@@ -797,9 +797,18 @@
 // The kit has no "huff", so that one breathy noise burst is synthesized here.
 const Sfx = (() => {
   const A = window.DogAudio;
-  let hctx = null;
+  // track every AudioContext created (the kit's and ours) so the title's sound test can report their states
+  const ALL = [];
+  const Orig = window.AudioContext || window.webkitAudioContext;
+  if (Orig) {
+    const Shim = function (...args) { const c = new Orig(...args); ALL.push(c); return c; };
+    Shim.prototype = Orig.prototype;
+    window.AudioContext = Shim;
+  }
+  let hctx = null, unlocked = false;
   try { A.setMuted(localStorage.getItem('missys_mute') === '1'); } catch (e) {}
-  function ctx() {
+  function ctx() {                 // our own context exists only after a user gesture (see unlock)
+    if (!unlocked) return null;
     if (!hctx) { try { hctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return null; } }
     if (hctx.state === 'suspended') hctx.resume();
     return hctx;
@@ -880,7 +889,8 @@ const Sfx = (() => {
   }
   return {
     voice,
-    unlock() { A.unlock(); },
+    unlock() { A.unlock(); unlocked = true; ctx(); },
+    states() { return { kit: ALL.filter(c => c !== hctx).map(c => c.state), mine: hctx ? [hctx.state] : [] }; },
     get muted() { return A.isMuted(); },
     toggle() {
       A.setMuted(!A.isMuted());
@@ -1527,13 +1537,8 @@ function animateDog(dt) {
     if (d.frame === 2 && !d.stepped) { d.stepped = true; if (Math.random() < 0.5) puff(S2(d.x) - d.face * 18, FEET_Y - d.dh, 1); }
     if (d.frame !== 2) d.stepped = false;
   } else if (hb) { d.row = 0; d.frame = 0; d.oy = Math.round(Math.sin(d.huffT * 45)) * -2; d.tilt = -0.05 * d.face; }
-  else {  // idle: stopped to sniff
-    d.row = 2; d.ft += dt * 6; d.frame = Math.floor(d.ft) % 8; d.oy = 2; d.tilt = 0.09 * d.face;
-    d.sniffTick -= dt;
-    if (d.sniffTick <= 0) {
-      d.sniffTick = 0.35;
-      G.parts.push({ k: 'q', x: S2(d.x) + d.face * 34, y: FEET_Y - d.dh - 26, vx: d.face * 10, vy: -26, life: 0.7, t: 0, s: 1, col: '#cfeaff' });
-    }
+  else {  // idle: stopped to sniff (look-around / head-down idle with tail wag, row 1)
+    d.row = 1; d.ft += dt * 8; d.frame = Math.floor(d.ft) % 14;
   }
 }
 
@@ -2062,7 +2067,6 @@ function drawParts() {
     else if (p.k === 'feather') { ctx.globalAlpha = Math.min(1, k * 2); ctx.fillStyle = p.col; ctx.fillRect(Math.round(p.x), Math.round(p.y), p.s + 1, p.s - 1); }
     else if (p.k === 'bang') { ctx.globalAlpha = Math.min(1, k * 2); outlineText('!', p.x, p.y, 'bold ' + Math.round(16 + (1 - k) * 6) + 'px "Courier New", monospace', '#fff', 'center'); }
     else if (p.k === 'z') { ctx.globalAlpha = Math.min(1, k * 2); outlineText('z', p.x + Math.sin(p.t * 3) * 4, p.y, 'bold ' + Math.round(10 + p.t * 5) + 'px "Courier New", monospace', '#fff', 'center'); }
-    else if (p.k === 'q') { ctx.globalAlpha = Math.min(1, k * 2); outlineText('?', p.x + Math.sin(p.t * 9) * 3, p.y, 'bold 14px "Courier New", monospace', p.col, 'center'); }
     else if (p.k === 'ring') { ctx.globalAlpha = k * 0.8; ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; for (let i = 0; i < 2; i++) { ctx.beginPath(); const r = 10 + (1 - k) * (40 + i * 22); if (p.s > 0) ctx.arc(p.x, p.y, r, -0.7, 0.7); else ctx.arc(p.x, p.y, r, Math.PI - 0.7, Math.PI + 0.7); ctx.stroke(); } }
     ctx.globalAlpha = 1;
   }
@@ -2085,7 +2089,7 @@ function drawHUD() {
   ctx.drawImage(IMG.toilet, 0, 0, 32, 32, bx + bw + 3, 12, 20, 20);
   outlineText('FOOD ' + String(G.score).padStart(4, '0'), W / 2 + 20, 14, 'bold 18px "Courier New", monospace', '#fff', 'center');
   outlineText('BEST ' + String(G.best).padStart(4, '0') + '  LV ' + G.bestLevel, W - 10, 11, 'bold 11px "Courier New", monospace', '#ffe680', 'right', '#1c1a26', 3);
-  outlineText(Sfx.muted ? 'MUTED (M)' : 'M: mute   P: pause', W - 10, 26, 'bold 10px "Courier New", monospace', '#cfe0ff', 'right', '#1c1a26', 2);
+  outlineText(Sfx.muted ? '\u266A MUTED (M)   P: pause' : '\u266A ON   M: mute   P: pause', W - 10, 26, 'bold 10px "Courier New", monospace', '#cfe0ff', 'right', '#1c1a26', 2);
   if (G.bannerT > 0 && G.state === 'play') {   // run intro banner, fades out
     const a = clamp(G.bannerT / 0.9, 0, 1) * clamp((3.4 - G.bannerT) / 0.3, 0, 1);
     ctx.globalAlpha = a;
@@ -2155,12 +2159,38 @@ function drawTitle() {
     drawClearBar(W / 2, 298);
     return;
   }
+  if (G.audioTest) {
+    drawAudioTest();
+    if (Math.floor(G.titleT * 1.8) % 2 === 0) outlineText('PRESS SPACE TO START', W / 2, 272, 'bold 18px "Courier New", monospace', '#fff', 'center');
+    if (Sfx.muted) outlineText('Sound is muted \u2014 press M', W / 2, 300, 'bold 13px "Courier New", monospace', '#ff9a9a', 'center', '#3a0c14', 3);
+    return;
+  }
   wrapText(INTRO, 600, 'bold 12px "Courier New", monospace').forEach((l, i, a) => outlineText(l, W / 2, 118 + i * 14 - (a.length - 1) * 7, 'bold 12px "Courier New", monospace', '#fff', 'center'));
   panel(130, 130, 380, 124);
-  const L = [['LEFT / RIGHT   A / D', 'move'], ['UP / W / SPACE', 'jump (hold = higher)'], ['DOWN / S', 'duck'], ['X / K', 'huff (scares parrots)'], ['P / ESC   M', 'pause   mute'], ['L', 'high scores']];
+  const L = [['LEFT / RIGHT', 'move'], ['UP / SPACE', 'jump (hold = higher)'], ['DOWN', 'duck'], ['X', 'huff (scares parrots)'], ['P / ESC   M', 'pause   mute'], ['L', 'high scores']];
   L.forEach((l, i) => { outlineText(l[0], 146, 148 + i * 17, 'bold 12px "Courier New", monospace', '#ffd24a', 'left', '#1c1a26', 2); outlineText(l[1], 494, 148 + i * 17, 'bold 12px "Courier New", monospace', '#fff', 'right', '#1c1a26', 2); });
   if (Math.floor(G.titleT * 1.8) % 2 === 0) outlineText(touchMode ? 'TAP TO START' : 'PRESS SPACE TO START', W / 2, 272, 'bold 18px "Courier New", monospace', '#fff', 'center');
+  if (Sfx.muted) { ctx.fillStyle = '#7a1f2b'; ctx.fillRect(W / 2 - 150, 296, 300, 20); outlineText('Sound is muted \u2014 press M', W / 2, 306, 'bold 13px "Courier New", monospace', '#fff', 'center', '#3a0c14', 2); }
+  else outlineText('\u266A sound ON  (M: mute)', W - 8, H - 8, 'bold 10px "Courier New", monospace', '#cfe0ff', 'right', '#1c1a26', 2);
   if (G.best) outlineText('BEST ' + G.best + '   LEVEL ' + G.bestLevel, W / 2, 292, 'bold 12px "Courier New", monospace', '#ffe680', 'center');
+}
+
+// ?scn=audiotest: a self-diagnosis panel on the title screen
+const TEST_BTN = { x: 190, y: 156, w: 110, h: 26 };
+function drawAudioTest() {
+  const b = TEST_BTN;
+  panel(b.x - 30, b.y - 30, 290, 140);
+  outlineText('SOUND TEST', b.x + 6, b.y - 10, 'bold 11px "Courier New", monospace', '#ffd24a', 'left', '#1c1a26', 2);
+  ctx.fillStyle = '#2e7d4f'; ctx.fillRect(b.x, b.y, b.w, b.h); ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.strokeRect(b.x + 1, b.y + 1, b.w - 2, b.h - 2);
+  outlineText('Test sound', b.x + b.w / 2, b.y + b.h / 2 + 1, 'bold 12px "Courier New", monospace', '#fff', 'center', '#14301f', 2);
+  const st = Sfx.states();
+  const rows = ['kit ctx: ' + (st.kit.join(',') || 'not created'), 'huff ctx: ' + (st.mine.join(',') || 'not created'), 'muted: ' + Sfx.muted,
+    'music: ' + (Sfx.music.current() || 'none') + (Sfx.music.isPlaying() ? ' (playing)' : '')];
+  rows.forEach((r, i) => outlineText(r, b.x, b.y + 44 + i * 14, 'bold 10px "Courier New", monospace', '#cfe0ff', 'left', '#1c1a26', 2));
+}
+function runAudioTest() {
+  Sfx.unlock(); Sfx.sfx('eat'); Sfx.music.play('camptown');
+  setTimeout(() => { if (G.state === 'title') Sfx.music.stop(); }, 2000);
 }
 
 function drawOver() {
@@ -2218,7 +2248,7 @@ function render() {
 // =====================================================================
 let paused = false, touchMode = false;
 function press(action) {
-  Sfx.unlock();
+  ensureAudio();
   if (G.state === 'title') { if (action === 'jump' && !G.showLB) startGame(); else if (action === 'jump') { G.showLB = false; startGame(); } return; }
   if (G.state === 'over') { if (action === 'jump' && G.overT > 0.6) startGame(); return; }
   if (G.state === 'win') { if (action === 'jump' && G.lieT > 2.2 && !paused) startLevel(G.level + 1); return; }
@@ -2232,40 +2262,48 @@ function togglePause() {
   if (paused) Sfx.pause(); else Sfx.unpause();
 }
 
+function ensureAudio() { if (!paused) Sfx.unlock(); }
 addEventListener('keydown', e => {
+  ensureAudio();
   const c = e.code;
   if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(c)) e.preventDefault();
-  if (c === 'ArrowLeft' || c === 'KeyA') kb.left = true;
-  else if (c === 'ArrowRight' || c === 'KeyD') kb.right = true;
-  else if (c === 'ArrowDown' || c === 'KeyS') { kb.down = true; Sfx.unlock(); }
+  if (c === 'ArrowLeft') kb.left = true;
+  else if (c === 'ArrowRight') kb.right = true;
+  else if (c === 'ArrowDown') kb.down = true;
   else if (c === 'KeyC') kb.clear = true;
   if (e.repeat) return;
-  if (c === 'Space' || c === 'ArrowUp' || c === 'KeyW') press('jump');
+  if (c === 'Space' || c === 'ArrowUp') press('jump');
   else if (c === 'Enter' && (G.state === 'over' || G.state === 'title')) press('jump');
-  else if (c === 'KeyX' || c === 'KeyK') press('huff');
+  else if (c === 'KeyX') press('huff');
   else if (c === 'KeyP' || c === 'Escape') togglePause();
   else if (c === 'KeyM') Sfx.toggle();
   else if (c === 'KeyL' && G.state === 'title') { G.showLB = !G.showLB; if (G.showLB) G.lb = loadLB(); }
 });
 addEventListener('keyup', e => {
   const c = e.code;
-  if (c === 'Space' || c === 'ArrowUp' || c === 'KeyW') G.jumpHeld = false;
-  else if (c === 'ArrowLeft' || c === 'KeyA') kb.left = false;
-  else if (c === 'ArrowRight' || c === 'KeyD') kb.right = false;
-  else if (c === 'ArrowDown' || c === 'KeyS') kb.down = false;
+  if (c === 'Space' || c === 'ArrowUp') G.jumpHeld = false;
+  else if (c === 'ArrowLeft') kb.left = false;
+  else if (c === 'ArrowRight') kb.right = false;
+  else if (c === 'ArrowDown') kb.down = false;
   else if (c === 'KeyC') kb.clear = false;
 });
 function autoPause() { if ((G.state === 'play' || G.state === 'win') && !paused) paused = true; }
-addEventListener('blur', () => { autoPause(); Sfx.suspend(); kb.left = kb.right = kb.down = kb.clear = false; vk.left = vk.right = vk.down = false; G.jumpHeld = false; });
+addEventListener('blur', () => { autoPause(); kb.left = kb.right = kb.down = kb.clear = false; vk.left = vk.right = vk.down = false; G.jumpHeld = false; });
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) { autoPause(); Sfx.suspend(); }
   else if (!paused) Sfx.resume();
 });
+// Safari is strict about user activation: resume synchronously inside every gesture handler
+for (const ev of ['pointerdown', 'mousedown', 'click', 'touchend', 'touchstart']) addEventListener(ev, () => ensureAudio(), true);
 document.addEventListener('contextmenu', e => e.preventDefault());
 // Mouse (desktop): click the game to jump / start / restart, right-click to huff.
 cv.addEventListener('pointerdown', e => {
   e.preventDefault();
   if (e.pointerType === 'touch') return;          // touch plays through the gutter buttons only
+  if (G.audioTest && G.state === 'title') {
+    const mx = e.offsetX * W / cv.clientWidth, my = e.offsetY * H / cv.clientHeight, b = TEST_BTN;
+    if (mx >= b.x && mx <= b.x + b.w && my >= b.y && my <= b.y + b.h) { runAudioTest(); return; }
+  }
   if (e.button === 2) press('huff'); else press('jump');
 });
 addEventListener('pointerup', e => { if (e.pointerType !== 'touch') G.jumpHeld = false; });
@@ -2365,6 +2403,7 @@ function debugRun() {
     G.lb = loadLB();
   }
   if (q.has('lb')) { G.showLB = true; G.lb = loadLB(); }
+  if (scn === 'audiotest') { G.audioTest = true; return; }
   const lvl = parseInt(q.get('level') || '0', 10);
   if (!scn && !lvl && !q.has('critter')) return;
   startGame(); if (lvl > 1) startLevel(lvl);
