@@ -2178,7 +2178,8 @@ function drawWoman() {
   ctx.save(); ctx.translate(sx, 0); ctx.scale(wm.flip ? -1 : 1, 1);
   ctx.drawImage(IMG.woman, wm.frame * 32, wm.row * 32, 32, 32, -16 * WOMAN_SCALE, Math.round(y), 32 * WOMAN_SCALE, 32 * WOMAN_SCALE);
   ctx.restore();
-  if (wm.mode === 'charge') drawSpeech(wm.line, sx, FEET_Y - wm.dh - 50, 'head');
+  // the shout only announces her: it stays pinned at her edge, pointing at her, until she's on screen
+  if (wm.mode === 'charge' && (sx < -10 || sx > W + 10)) drawSpeech(wm.line, 0, 0, 'edge', wm.side, wm.pulse);
 }
 
 function drawParts() {
