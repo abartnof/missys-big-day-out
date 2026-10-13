@@ -1124,15 +1124,15 @@ const LB_KEY = 'missys_scores', BESTLV_KEY = 'missys_bestlevel';
 function levelCfg(n) {
   const lv = Math.max(1, n);
   return {
-    cam: Math.min(75 + (lv - 1) * 13, 175),
-    womanCount: lv === 1 ? 1 : Math.min(6, lv + (lv > 3 ? 0 : 0)),
-    womanV: Math.min(150 + (lv - 1) * 14, 260),
-    parrotV: Math.min(120 + (lv - 1) * 17, 260),            // screen-space flight speed (px/s)
-    parrotCount: lv === 1 ? 7 : Math.min(12, 6 + lv),
+    cam: Math.min(88 + (lv - 1) * 12, 175),
+    womanCount: Math.min(6, lv + 1),
+    womanV: Math.min(185 + (lv - 1) * 12, 280),   // faster is easier to jump over (she spends less time under Missy)
+    parrotV: Math.min(175 + (lv - 1) * 15, 300),            // screen-space flight speed (px/s)
+    parrotCount: Math.min(18, 11 + lv),
     warnT: 0.9 - 0.4 * clamp((lv - 1) / 7, 0, 1),          // off-screen warning before a parrot enters (s)
     dipW: Math.max(65, 100 - (lv - 2) * 7),
-    obstP: Math.min(0.55, 0.40 - 0.02 * Math.min(lv - 1, 3) + 0.03 * Math.max(0, lv - 3)),
-    obstGap: [Math.max(180, 300 - 30 * (lv - 1)), Math.max(280, 440 - 40 * (lv - 1))],
+    obstP: Math.min(0.58, 0.46 + 0.02 * (lv - 1)),
+    obstGap: [Math.max(180, 240 - 15 * (lv - 1)), Math.max(280, 370 - 20 * (lv - 1))],
     highP: Math.max(0.07, 0.17 - 0.015 * (lv - 1)),
     behaviors: ['run', lv >= 3 && 'sprint', lv >= 4 && 'lunge', lv >= 4 && 'hop', lv >= 5 && 'turn', lv >= 6 && 'leap'].filter(Boolean),
     parrotKinds: ['cruiser', lv >= 2 && 'swooper', lv >= 3 && 'percher', lv >= 4 && 'thief', lv >= 5 && 'flock', lv >= 6 && 'mimic'].filter(Boolean),
@@ -1217,13 +1217,14 @@ function buildPlans(n) {
     const at = Math.round(lo + (hi - lo) * 0.92 * i / Math.max(1, cnt - 1) + (i ? (rng() - 0.5) * 100 : 0));
     let kind = kinds[Math.floor(rng() * kinds.length)];
     if (i === 0 && newest) kind = newest;
+    if (n === 1 && i === cnt - 1) kind = 'swooper';   // a gentle teaser of level 2, introduced alone like any new type
     const pair = kind === 'cruiser' && rng() < (n === 1 ? 0.3 : n <= 3 ? 0.25 : 0.2), lowFirst = rng() < 0.5;   // pair: head + low heights, a comfortable distance apart
-    G.parrotPlan.push({ at, kind, pair, low: kind === 'cruiser' && (pair ? lowFirst : n >= 3 && rng() < 0.35), variant: PARROTS[Math.floor(rng() * PARROTS.length)] });
+    G.parrotPlan.push({ at, kind, pair, low: kind === 'cruiser' && (pair ? lowFirst : rng() < 0.35), variant: PARROTS[Math.floor(rng() * PARROTS.length)] });
   }
   G.parrotIdx = 0; G.warns = [];
   const c = cfg.womanCount, ats = c === 1 ? [1050] : Array.from({ length: c }, (_, i) => 800 + (1500 * i) / (c - 1));
   const fresh = cfg.behaviors.filter(b => BEH_UNLOCK[b] === n);
-  G.womanPlan = ats.map((at, i) => ({ at, side: rng() < 0.5 ? 'left' : 'right', mimic: n >= 7 && rng() < 0.5,
+  G.womanPlan = ats.map((at, i) => ({ at, side: rng() < 0.5 ? 'left' : 'right', mimic: n >= 7 && rng() < 0.5, vMul: n === 1 && i === 1 ? 1.15 : 1,
     beh: i === 0 && fresh.length ? fresh[Math.floor(rng() * fresh.length)] : cfg.behaviors[Math.floor(rng() * cfg.behaviors.length)] }));
   G.womanIdx = 0;
   // bonus critters (max 2): a guaranteed one in level 1, then more often as levels go on
@@ -1240,7 +1241,7 @@ function startLevel(n) {
   G.cam = 0; G.speed = G.cfg.cam; G.dist = 0; G.levelStart = G.score;
   G.entities = []; G.parts = []; G.texts = []; G.shake = 0; G.hintT = 0; G.overT = 0; G.holdT = 0; G.winT = 0; G.mimic = null; G.pendingMimic = -1;
   G.dog = newDog(); G.wm = newWoman(); G.jumpBuf = 0; G.pushCd = 0; G.wasPush = false;
-  G.nextSpawnX = 480; G.solo = false;
+  G.nextSpawnX = 480; G.solo = false; G.parrotGap = 0;
   buildPlans(n);
   G.toilet = { blink: 0, blinkT: rnd(2, 4.5), frame: 0 };
   G.critter = null;
@@ -1493,7 +1494,7 @@ function startWoman(opts = {}) {
   wm.mode = 'warn'; wm.warnT = opts.warnT || 1.6; wm.t = 0; wm.over = false; wm.dodged = false; wm.prevSign = 0;
   wm.dir = wm.side === 'left' ? 1 : -1;
   wm.sx = wm.side === 'left' ? -50 : W + 50; wm.x0 = wm.sx; wm.x1 = wm.side === 'left' ? W + 60 : -60;
-  wm.v = wm.beh === 'sprint' ? cfg.womanV * 1.7 : cfg.womanV;
+  wm.v = (wm.beh === 'sprint' ? cfg.womanV * 1.7 : cfg.womanV) * (opts.vMul || 1);
   wm.dh = 0; wm.dv = 0; wm.turned = false; wm.flip = wm.dir < 0; wm.pulse = 0;
   wm.phase = 'run'; wm.pt = 0; wm.marks = (WOMAN_MARKS[wm.beh] || []).slice(); wm.markIdx = 0;
   Sfx.shout(wm.line); Sfx.music.setDanger(true);
@@ -1504,7 +1505,8 @@ function updateWoman(dt) {
   const wm = G.wm, d = G.dog;
   if (wm.mode === 'none') {
     const it = G.womanPlan[G.womanIdx];
-    if (G.stage === 'run' && it && G.cam >= it.at && G.cam < NOSPAWN_X - W && !G.solo) { G.womanIdx++; startWoman(it); }
+    const parrotsOut = G.level <= 2 && (G.warns.length > 0 || G.entities.some(e => e.type === 'parrot' && e.state !== 'flee'));   // ...and she waits for them to clear
+    if (G.stage === 'run' && it && G.cam >= it.at && G.cam < NOSPAWN_X - W && !G.solo && !parrotsOut) { G.womanIdx++; startWoman(it); }
     return;
   }
   wm.t += dt; wm.pulse += dt;
@@ -1535,7 +1537,7 @@ function updateWoman(dt) {
   else { wm.row = 1; wm.ft += dt * (8 + v / 22); wm.frame = Math.floor(wm.ft) % 6; }
   // collision with Missy: tight boxes
   const dsx = S2(d.x), dx = Math.abs(wm.sx - dsx);
-  if (dx < 12 + 12 && wm.dh < d.dh + d.h - 2 && wm.dh + 40 > d.dh + 2) { endGame('caught'); return; }
+  if (dx < 8 + 8 && wm.dh < d.dh + d.h - 2 && wm.dh + 34 > d.dh + 2) { endGame('caught'); return; }   // her visible body, a bit forgiving
   const sign = Math.sign(wm.sx - dsx);   // (sound only) she ran past
   if (wm.prevSign && sign && sign !== wm.prevSign && !wm.dodged) { wm.dodged = true; Sfx.sfx('human_dodge'); }
   if (sign) wm.prevSign = sign;
@@ -1676,6 +1678,7 @@ function updatePlay(dt) {
   updateDog(dt);
   if (G.state !== 'play') return;
 
+  G.parrotGap = Math.max(0, (G.parrotGap || 0) - dt);
   if (G.stage === 'run') {
     while (G.nextSpawnX < Math.min(G.cam + W + 160, NOSPAWN_X)) spawnPattern();
     // parrots come from the level's schedule (by camera position), never from where Missy is
@@ -1683,7 +1686,11 @@ function updatePlay(dt) {
       const it = G.parrotPlan[G.parrotIdx], first = !G.seen[it.kind];
       if (G.cam > NOSPAWN_X - W) { G.parrotIdx = G.parrotPlan.length; break; }
       if (G.solo || (first && threatBusy())) break;          // a new type is introduced alone
+      if (G.parrotGap > 0) break;
+      const herTurn = G.womanPlan[G.womanIdx] && G.cam >= G.womanPlan[G.womanIdx].at;
+      if (G.level <= 2 && (G.wm.mode !== 'none' || herTurn)) break;   // early levels: parrots hold off while her charge is due or under way                            // parrots held back (e.g. by a solo intro) come out one at a time, not as a stack
       G.parrotIdx++; beginParrotWarn(it, first);
+      G.parrotGap = Math.max(0.6, 1.3 - 0.1 * (G.level - 1));
     }
     if (G.pendingMimic > 0) { G.pendingMimic -= dt; if (G.pendingMimic <= 0) { G.pendingMimic = -1; startMimic(); } }
   }
@@ -1699,7 +1706,8 @@ function updatePlay(dt) {
   }
   updateWarns(dt);
   updateParrots(dt);
-  if (G.solo && !threatBusy()) G.solo = false;
+  // a solo introduction ends once the new parrot has flown past Missy, not when it finally leaves the screen
+  if (G.solo && !(G.wm.mode !== 'none' || G.mimic || G.warns.length || G.entities.some(e => e.type === 'parrot' && e.state !== 'flee' && S2(e.x) > S2(d.x) - 30))) G.solo = false;
   updateWoman(dt);
   if (G.state !== 'play') return;
   critterTick();
