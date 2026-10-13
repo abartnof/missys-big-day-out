@@ -219,12 +219,12 @@ const LB_KEY = 'missys_scores', BESTLV_KEY = 'missys_bestlevel';
 function levelCfg(n) {
   const lv = Math.max(1, n);
   return {
-    cam: Math.min(88 + (lv - 1) * 12, 175),
-    womanCount: Math.min(6, lv + 1),
-    womanV: Math.min(185 + (lv - 1) * 12, 280),   // faster is easier to jump over (she spends less time under Missy)
-    parrotV: Math.min(175 + (lv - 1) * 15, 300),            // screen-space flight speed (px/s)
-    parrotCount: Math.min(18, 11 + lv),
-    warnT: 0.9 - 0.4 * clamp((lv - 1) / 7, 0, 1),          // off-screen warning before a parrot enters (s)
+    cam: Math.min(88 + (lv - 1) * 7, 140),
+    womanCount: Math.min(5, 2 + Math.floor(lv / 2)),
+    womanV: Math.min(185 + (lv - 1) * 8, 245),   // faster is easier to jump over (she spends less time under Missy)
+    parrotV: Math.min(175 + (lv - 1) * 7, 225),             // screen-space flight speed (px/s): always slow enough to react to
+    parrotCount: Math.min(16, 11 + lv),
+    warnT: 1.0 - 0.15 * clamp((lv - 1) / 7, 0, 1),         // off-screen warning before a parrot enters (s): never under 0.85
     dipW: Math.max(65, 100 - (lv - 2) * 7),
     obstP: Math.min(0.58, 0.46 + 0.02 * (lv - 1)),
     obstGap: [Math.max(180, 240 - 15 * (lv - 1)), Math.max(280, 370 - 20 * (lv - 1))],
@@ -586,10 +586,10 @@ function startWoman(opts = {}) {
   wm.beh = opts.beh || pick(cfg.behaviors);
   wm.side = opts.side || (Math.random() < 0.5 ? 'left' : 'right');
   wm.line = pickLine();
-  wm.mode = 'warn'; wm.warnT = opts.warnT || 1.6; wm.t = 0; wm.over = false; wm.dodged = false; wm.prevSign = 0;
+  wm.mode = 'warn'; wm.warnT = opts.warnT || 2.4; wm.t = 0; wm.over = false; wm.dodged = false; wm.prevSign = 0;
   wm.dir = wm.side === 'left' ? 1 : -1;
   wm.sx = wm.side === 'left' ? -50 : W + 50; wm.x0 = wm.sx; wm.x1 = wm.side === 'left' ? W + 60 : -60;
-  wm.v = (wm.beh === 'sprint' ? cfg.womanV * 1.7 : cfg.womanV) * (opts.vMul || 1);
+  wm.v = (wm.beh === 'sprint' ? cfg.womanV * 1.35 : cfg.womanV) * (opts.vMul || 1);
   wm.dh = 0; wm.dv = 0; wm.turned = false; wm.flip = wm.dir < 0; wm.pulse = 0;
   wm.phase = 'run'; wm.pt = 0; wm.marks = (WOMAN_MARKS[wm.beh] || []).slice(); wm.markIdx = 0;
   Sfx.shout(wm.line); Sfx.music.setDanger(true);
@@ -600,7 +600,7 @@ function updateWoman(dt) {
   const wm = G.wm, d = G.dog;
   if (wm.mode === 'none') {
     const it = G.womanPlan[G.womanIdx];
-    const parrotsOut = G.level <= 2 && (G.warns.length > 0 || G.entities.some(e => e.type === 'parrot' && e.state !== 'flee'));   // ...and she waits for them to clear
+    const parrotsOut = G.level <= 4 && (G.warns.length > 0 || G.entities.some(e => e.type === 'parrot' && e.state !== 'flee'));   // ...and she waits for them to clear
     if (G.stage === 'run' && it && G.cam >= it.at && G.cam < NOSPAWN_X - W && !G.solo && !parrotsOut) { G.womanIdx++; startWoman(it); }
     return;
   }
@@ -623,7 +623,7 @@ function updateWoman(dt) {
     }
   } else if (wm.phase === 'act') {
     wm.pt += dt;
-    if (wm.beh === 'lunge') { v *= 2.5; pose = [2, Math.min(2, Math.floor(wm.pt * 6))]; if (wm.pt >= 0.5) wm.phase = 'run'; }
+    if (wm.beh === 'lunge') { v *= 1.8; pose = [2, Math.min(2, Math.floor(wm.pt * 6))]; if (wm.pt >= 0.5) wm.phase = 'run'; }
     else if (wm.beh === 'hop') { wm.dv -= 1750 * dt; wm.dh += wm.dv * dt; if (wm.dh <= 0) { wm.dh = 0; wm.dv = 0; wm.phase = 'run'; } }
     else if (wm.beh === 'leap') { v *= 1.35; const s = clamp(wm.pt / 0.95, 0, 1); wm.dh = 4 * 150 * s * (1 - s); pose = [2, 1]; if (wm.pt >= 0.95) { wm.dh = 0; wm.phase = 'run'; } }
   }
@@ -783,9 +783,9 @@ function updatePlay(dt) {
       if (G.solo || (first && threatBusy())) break;          // a new type is introduced alone
       if (G.parrotGap > 0) break;                            // parrots held back (e.g. by a solo intro) come out one at a time, not as a stack
       const herTurn = G.womanPlan[G.womanIdx] && G.cam >= G.womanPlan[G.womanIdx].at;
-      if (G.level <= 2 && (G.wm.mode !== 'none' || herTurn)) break;   // early levels: parrots hold off while her charge is due or under way
+      if (G.level <= 4 && (G.wm.mode !== 'none' || herTurn)) break;   // levels 1-4: parrots hold off while her charge is due or under way
       G.parrotIdx++; beginParrotWarn(it, first);
-      G.parrotGap = Math.max(0.6, 1.3 - 0.1 * (G.level - 1));
+      G.parrotGap = Math.max(1.0, 1.4 - 0.05 * (G.level - 1));
     }
     if (G.pendingMimic > 0) { G.pendingMimic -= dt; if (G.pendingMimic <= 0) { G.pendingMimic = -1; startMimic(); } }
   }
