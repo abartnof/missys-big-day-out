@@ -23,7 +23,7 @@ Touch (landscape): buttons live in the side gutters, never over the game (left, 
 
 ## Rules
 
-- Food is +1; steak, bacon, sausage and salmon hop and are worth +5. Score comes only from food.
+- Food is +1; steak, bacon, sausage and salmon hop and are worth +5. Score comes from food and bonus critters.
 - Parrots cost 3 points. Hit one with fewer than 3 points and Missy is stunned for a second.
 - Obstacles are solid: climb on top of them. Get squeezed between one and the left screen edge and it's over.
 - Each level is 75 m long and ends at a toilet: walk Missy over and she lies down next to it. Food carries across levels; every level is a new street, a bit faster and trickier (parrot types and the owner's tricks unlock level by level).
@@ -38,7 +38,7 @@ vanilla JS with the scripts inlined and every image embedded, so it makes no net
 It's built from the readable sources in `src/`:
 
 ```
-python3 -I tools/build_single.py   # src/ -> missys-big-day-out.html
+python3 -I tools/build_single.py   # src/ -> missys-big-day-out.html and index.html (the same page)
 ```
 
 To work on the sources directly, open `src/index.html` (or serve the folder with

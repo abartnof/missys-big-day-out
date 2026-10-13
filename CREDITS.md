@@ -11,7 +11,7 @@ to redistribute or resell it. Download it from its creator instead.
 | Used for | Asset | Creator | Their terms |
 | --- | --- | --- | --- |
 | Missy (recolored white) | [2D Pixel Art Fox Sprites](https://elthen.itch.io/2d-pixel-art-fox-sprites) | Elthen | Free for commercial and non-commercial projects |
-| The owner | [MiniFolks - Villagers](https://lyaseek.itch.io/minifvillagers) | LYASeeK | Use as you like, don't resell; credit appreciated |
+| The owner, and the neighbours who lean out of windows | [MiniFolks - Villagers](https://lyaseek.itch.io/minifvillagers) | LYASeeK | Use as you like, don't resell; credit appreciated |
 | Food | [Pixel Mart](https://ghostpixxells.itch.io/pixel-mart) | ghostpixxells | Free to download, commercial use allowed |
 
 ## Font
@@ -24,7 +24,7 @@ only its Latin characters.
 ## Original art
 
 The street, buildings, skylines, street props, parrots, bunny, kitty, frog,
-bones and the toilet are original to this game, and covered by the MIT License
+bones and the toilet (from the game's own design kit) are original to this game, and covered by the MIT License
 with the code. The art is drawn by the scripts in `tools/art/`, and the pixel
 heart, clouds, pavement and on-screen buttons are drawn in code at runtime.
 

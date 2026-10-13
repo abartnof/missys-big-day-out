@@ -28,6 +28,11 @@ head_js = "<script>window.__ASSETS=" + json.dumps(assets) + ";</script>\n"
 html = html.replace("<script>", head_js + "<script>", 1)
 # The same page twice: missys-big-day-out.html is the one to download, and index.html is what
 # GitHub Pages serves at the site's root. (A redirect page there kept Safari's audio silent.)
+# Build id = hash of the page; version.json lets an already-open copy notice a newer deploy and reload.
+import hashlib
+build = hashlib.sha256(html.encode()).hexdigest()[:12]
+html = html.replace("<script>", '<script>window.BUILD_ID = "' + build + '";</script>\n<script>', 1)
 for name in ("missys-big-day-out.html", "index.html"):
     (ROOT / name).write_text(html)
-print("wrote missys-big-day-out.html and index.html,", len(html) // 1024, "KB")
+(ROOT / "version.json").write_text(json.dumps({"build": build}) + "\n")
+print("wrote missys-big-day-out.html, index.html and version.json (build " + build + "),", len(html) // 1024, "KB")

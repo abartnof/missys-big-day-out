@@ -17,7 +17,9 @@ const DT = 1 / 60;
 const STORE = { best: 'missys_best' };
 
 const cv = document.getElementById('c');
-const ctx = cv.getContext('2d');
+let ctx = cv.getContext('2d');   // (let: drawLB briefly renders into an offscreen canvas)
+const DEBUG = new URLSearchParams(location.search).get('debug') === '1';   // all debug URL hooks need ?debug=1; debug runs never touch localStorage
+let dbgLB = null;
 
 // ---------- asset loading (no fetch: works from file://) ----------
 const IMG = {};
@@ -44,6 +46,7 @@ async function loadAll() {
   const files = { dog: 'spaniel.png', woman: 'woman.png', general: 'general.png', bgs1: 'bgs1.png', skyline_far: 'skyline_far.png', bones: 'bones.png',
     bird_green: 'bird_green.png', bird_blue: 'bird_blue.png', bird_red: 'bird_red.png', bird_grey: 'bird_grey.png', toilet: 'toilet.png',
     critter_rabbit: 'critter_rabbit.png', critter_cat: 'critter_cat.png', critter_frog: 'critter_frog.png' };
+  for (const v of VILLAGERS) files['vill_' + v] = 'villagers/' + v + '.png';
   const jobs = Object.entries(files).map(async ([k, f]) => { IMG[k] = await loadImage('assets/' + f); });
   if (document.fonts) jobs.push(document.fonts.load('16px "DotGothic16"').catch(() => {}));
   for (const id of FOODS) if (!id.startsWith('bone')) jobs.push(loadImage('assets/items/' + id + '.png').then(i => { IMG[id] = i; }));
@@ -83,7 +86,7 @@ function haze(c, a, col = '185,200,225') {
   x.fillStyle = 'rgba(' + col + ',' + a + ')'; x.fillRect(0, 0, c.width, c.height);
 }
 
-function makeAlley(w, h, rng, lv) {
+function makeAlley(w, h, rng, lv, n = 0, styleName = 'downtown') {
   const c = mkCanvas(w, h), x = c.getContext('2d');
   x.imageSmoothingEnabled = false;
   const g = x.createLinearGradient(0, 0, 0, h); g.addColorStop(0, '#2a303e'); g.addColorStop(1, '#3d4658');
@@ -92,6 +95,7 @@ function makeAlley(w, h, rng, lv) {
   for (let y = 6; y < h; y += 12) { x.fillRect(0, y, w, 2); const off = (y / 12 % 2) * 12; for (let bx = off; bx < w; bx += 24) x.fillRect(bx, y - 12, 2, 12); }
   x.fillStyle = 'rgba(0,0,0,0.35)'; x.fillRect(0, 0, 8, h); x.fillRect(w - 8, 0, 8, h);   // dark sides: deep slot
   x.fillStyle = '#1b1f2b'; x.fillRect(0, 0, w, 6);
+  addAlleyFlavor(x, w, h, lv, n, styleName);
   if (rng() < 0.7) {                                       // fire escape
     const col = '#161a24', hl = '#4b5468';
     const plat = [h - 140, h - 90, h - 40];
@@ -175,21 +179,22 @@ function buildScenery(lv = 1) {
     rows.push(fillRow(units, shops.filter(s => s.u === 2), shops.filter(s => s.u === 3)));
     const bw = units * 16 * S;
     const heights = rows.map(r => Math.max(...r.map(m => m.h)));
-    const bh = heights.reduce((a, b) => a + b, 0) * S;
+    const bh = heights.reduce((a, b) => a + b, 0) * S + ROOF_PAD;
     const c = mkCanvas(bw, bh), x = c.getContext('2d');
     x.imageSmoothingEnabled = false;
-    let py = 0;
+    let py = 0; const mods = [];
     rows.forEach((row, ri) => {
       let px = 0; const rh = heights[ri];
-      for (const m of row) { x.drawImage(g, m.x, m.y, m.w, m.h, px, (py + rh - m.h) * S, m.w * S, m.h * S); px += m.w * S; }
+      for (const m of row) { const my = (py + rh - m.h) * S + ROOF_PAD; x.drawImage(g, m.x, m.y, m.w, m.h, px, my, m.w * S, m.h * S); mods.push({ m, X: px, Y: my, ri, shop: ri === rows.length - 1 }); px += m.w * S; }
       py += rh;
     });
     for (const [mode, col, a] of style.skin) { x.save(); x.globalCompositeOperation = mode; x.globalAlpha = a; x.fillStyle = col; x.fillRect(0, 0, bw, bh); x.restore(); }
+    addBuildingFlavor(c, mods, style, lv, n);
     haze(c, hazeA);
     BUILDINGS.push(c);
   }
   // alleys: a recessed dark slot (fire escape, dumpster) instead of an empty gap
-  for (let n = 0; n < 3; n++) BUILDINGS.push(makeAlley(n === 0 ? 64 : 96, 190, rng, lv));
+  for (let n = 0; n < 3; n++) BUILDINGS.push(makeAlley(n === 0 ? 64 : 96, 190, rng, lv, n, style.name));
   // mid skyline, tinted hazier and bluer for depth
   TOWERS = mkCanvas(640, 360); TOWERS.getContext('2d').drawImage(IMG.bgs1, 0, 0);
   haze(TOWERS, 0.38, '160,200,235');
@@ -259,16 +264,27 @@ const kb = { left: false, right: false, down: false, clear: false }, vk = { left
 try {
   G.best = parseInt(localStorage.getItem(STORE.best) || '0', 10) || 0;
   G.bestLevel = parseInt(localStorage.getItem(BESTLV_KEY) || '1', 10) || 1;
+  if (DEBUG) { G.best = 0; G.bestLevel = 1; }
 } catch (e) {}
 
 // ---------- leaderboard (top 10, localStorage) ----------
 function loadLB() {
+  if (DEBUG) return dbgLB ? dbgLB.slice() : [];
   try {
     const a = JSON.parse(localStorage.getItem(LB_KEY) || '[]');
-    return Array.isArray(a) ? a.filter(e => e && typeof e.score === 'number') : [];
+    if (!Array.isArray(a)) return [];
+    const num = v => (typeof v === 'number' || typeof v === 'string') && v !== '' && isFinite(+v) ? +v : NaN;
+    const out = [];
+    for (const e of a) {
+      if (!e || typeof e !== 'object') continue;
+      const t = num(e.t), level = Math.floor(num(e.level)), m = Math.floor(num(e.m)), score = Math.floor(num(e.score));
+      if (!isFinite(t) || !isFinite(level) || !isFinite(m) || !isFinite(score) || level < 1 || m < 0 || score < 0 || level > 9999 || m > 9999 || score > 9999999) continue;
+      out.push({ t, level, m, score });
+    }
+    return out;
   } catch (e) { return []; }
 }
-function saveLB(a) { try { localStorage.setItem(LB_KEY, JSON.stringify(a)); } catch (e) {} }
+function saveLB(a) { if (DEBUG) { dbgLB = a.slice(); return; } try { localStorage.setItem(LB_KEY, JSON.stringify(a)); } catch (e) {} }
 function addScore() {
   const lb = loadLB();
   const entry = { t: Date.now(), score: G.score, level: G.level, m: Math.min(LEVEL_M, Math.floor(G.dist)) };
@@ -291,13 +307,15 @@ function newDog() {
 }
 function newWoman() {
   return { mode: 'none', sx: -100, dh: 0, dv: 0, dir: 1, v: 0, beh: 'run', line: '', side: 'left', t: 0, warnT: 0, ft: 0, frame: 0, row: 0,
-    turned: false, x0: 0, x1: 0, flip: false, over: false, dodged: false, prevSign: 0, phase: 'run', pt: 0, marks: [], markIdx: 0 };
+    turned: false, entered: false, x0: 0, x1: 0, flip: false, over: false, dodged: false, prevSign: 0, phase: 'run', pt: 0, marks: [], markIdx: 0 };
 }
 
 // back to the title screen (after game over). The game-over song is allowed to finish; then the title song loops.
 // the title loops Mozart's Rondo alla Turca; starting a run switches to the level song
 function playTitleSong() { if (Sfx.music.current() !== 'turkish') Sfx.music.play('turkish'); }
+let hiTimer = 0;
 function goToTitle() {
+  clearTimeout(hiTimer); Sfx.music.setLevel(1);
   G.state = 'title'; G.titleT = 0; G.showLB = false; G.cam = 0; G.dist = 0; G.level = 1; G.cfg = levelCfg(1);
   buildScenery(1); layoutBuildings(1); layoutDecor(1); layoutFG(1);
   G.entities = []; G.parts = []; G.texts = []; G.mimic = null; G.critter = null; G.shake = 0;
@@ -306,6 +324,7 @@ function goToTitle() {
 }
 // a fresh run: level 1, score 0
 function startGame() {
+  clearTimeout(hiTimer);
   G.score = 0; G.newBest = false; G.reason = ''; G.rank = 0; G.t = 0; G.seen = {};
   startLevel(1); G.bannerT = 3.4;
   G.state = 'play';
@@ -314,25 +333,109 @@ function startGame() {
 // NES rules: every NPC follows a pre-determined schedule and pattern (by type + level + a seeded random)
 // and never reads Missy's position or velocity. Difficulty comes from speed, density and pattern complexity.
 const BEH_UNLOCK = { sprint: 3, lunge: 4, hop: 4, turn: 5, leap: 6 };
+// ---- timeline helpers for levels 1-4 (one coherent schedule in camera-x; seconds <-> camera px via the level's scroll ramp) ----
+const SOLO_X = W * 0.45;          // a solo introduction ends once the new parrot has flown past this FIXED screen x
+const CLEAR_X = W * 0.5;         // the owner may start once every parrot out is within OWNER_LEAD s of this screen x
+const OWNER_LEAD = 1.8;          // (she needs ~2.4 s of warning plus time to run in, so a parrot still on its way out is fine)
+const WARN_T = 2.4;              // owner warning before she appears
+const K_RAMP = 0.18 / LEVEL_PX;  // scroll speed = cfg.cam * (1 + K_RAMP * cam)
+const camAt = (t, c) => (Math.exp(K_RAMP * c * t) - 1) / K_RAMP;
+function womanCrossT(beh, v) { return (W + 110) / v + ({ lunge: 0.5, hop: 1.3, turn: 0.5, leap: 0.6 }[beh] || 0.2); }
+function womanFreeAt(wm) { return 0.35 * womanCrossT(wm.beh, wm.v); }     // parrots may be released again once she is this far into her run
+function parrotSpeed(kind, first, cfg) {      // screen-space speed of a parrot's approach (px/s)
+  const v = cfg.parrotV * (first ? 0.75 : 1);
+  return kind === 'percher' ? cfg.cam * 1.1 : kind === 'thief' ? Math.max(v * 1.6, 190) : v;
+}
+function parrotTimes(it, first, cfg) {        // seconds after release: [until clear of the owner's lead, until a solo intro ends, extra gap after the last member]
+  const T = cfg.warnT + (first ? 0.3 : 0), sp = parrotSpeed(it.kind, first, cfg), x0 = W + (it.kind === 'percher' ? 90 : 40);
+  const tail = it.pair ? 230 / cfg.parrotV : it.kind === 'flock' ? 3 * 74 / cfg.parrotV : 0;
+  return { life: T + (x0 + 120) / sp + tail, clear: Math.max(0, T + (x0 - CLEAR_X) / sp + tail - OWNER_LEAD), solo: first ? T + (x0 - SOLO_X) / sp : 0, tail };
+}
+// lay the plan out on the timeline: groups of parrots, each group followed by an owner charge (the last charge sits at the tail of the level)
+function layoutTimeline(P, C, cfg, extra, seen) {
+  const gap = Math.max(1.0, 1.4 - 0.05 * (G.level - 1)), c = cfg.cam;
+  const tCut = Math.log(1 + K_RAMP * (NOSPAWN_X - W - 60)) / (K_RAMP * c);
+  const out = { parr: [], wom: [], ok: true }, seen2 = Object.assign({}, seen);
+  let cur = 260 / c, k = 0, ei = 0, busy = 0, wEnd = 0;      // busy: when every parrot released so far has left the screen (a new type waits for that)
+  const nG = C.length;
+  for (let g = 0; g < nG; g++) {
+    const size = Math.floor(P.length / nG) + (g < P.length % nG ? 1 : 0);
+    let aMin = cur;
+    for (let j = 0; j < size; j++, k++) {
+      const it = P[k], first = !seen2[it.kind]; seen2[it.kind] = true;
+      const tm = parrotTimes(it, first, cfg);
+      if (first) cur = Math.max(cur, busy, wEnd);   // a new type waits for the street (and the owner) to be clear
+      out.parr.push(cur); busy = Math.max(busy, cur + tm.life);
+      aMin = Math.max(aMin, cur + tm.clear, cur + tm.solo);
+      cur = Math.max(cur + gap + tm.tail * (it.pair ? 1 : 0) + (it.pair ? 1.2 : 0), cur + tm.solo) + extra[ei++];
+    }
+    const A = Math.max(aMin, cur - gap) + extra[ei++];     // the owner starts after the group has cleared
+    out.wom.push(A);
+    const wv = { beh: C[g].beh, v: cfg.womanV * (C[g].beh === 'sprint' ? 1.35 : 1) * C[g].vMul };
+    cur = A + WARN_T + womanFreeAt(wv) + 0.3; wEnd = A + WARN_T + womanCrossT(wv.beh, wv.v) + 0.3;
+    if (g === nG - 1 && A > tCut) out.ok = false;
+  }
+  out.slack = tCut - out.wom[nG - 1];
+  return out;
+}
 function buildPlans(n) {
   const cfg = G.cfg, rng = makeRng(9001 + n * 131);
   const kinds = cfg.parrotKinds, newest = n > 1 && n <= 6 ? kinds[kinds.length - 1] : null;
-  const lo = 640, hi = NOSPAWN_X - W - 320, cnt = cfg.parrotCount;
-  G.parrotPlan = [];
+  const lo = 640, hi = NOSPAWN_X - W - 320, early = n <= 4;
+  const cnt = early ? [9, 10, 11, 12][n - 1] : cfg.parrotCount;
+  let P = [];
   for (let i = 0; i < cnt; i++) {
     const at = Math.round(lo + (hi - lo) * 0.92 * i / Math.max(1, cnt - 1) + (i ? (rng() - 0.5) * 100 : 0));
     let kind = kinds[Math.floor(rng() * kinds.length)];
     if (i === 0 && newest) kind = newest;
-    if (n === 1 && i === cnt - 1) kind = 'swooper';   // a gentle teaser of level 2, introduced alone like any new type
+    const teaser = n === 1 && i === cnt - 1;
+    if (teaser) kind = 'swooper';   // a gentle teaser of level 2, introduced alone like any new type
     const pair = kind === 'cruiser' && rng() < (n === 1 ? 0.3 : n <= 3 ? 0.25 : 0.2), lowFirst = rng() < 0.5;   // pair: head + low heights, a comfortable distance apart
-    G.parrotPlan.push({ at, kind, pair, low: kind === 'cruiser' && (pair ? lowFirst : rng() < 0.35), variant: PARROTS[Math.floor(rng() * PARROTS.length)] });
+    P.push({ teaser, at, kind, pair, low: kind === 'cruiser' && (pair ? lowFirst : rng() < 0.35), variant: PARROTS[Math.floor(rng() * PARROTS.length)] });
   }
-  G.parrotIdx = 0; G.warns = [];
-  const c = cfg.womanCount, ats = c === 1 ? [1050] : Array.from({ length: c }, (_, i) => 800 + (1500 * i) / (c - 1));
+  const c = early ? [2, 2, 3, 3][n - 1] : cfg.womanCount, ats = c === 1 ? [1050] : Array.from({ length: c }, (_, i) => 800 + (1500 * i) / (c - 1));
   const fresh = cfg.behaviors.filter(b => BEH_UNLOCK[b] === n);
-  G.womanPlan = ats.map((at, i) => ({ at, side: rng() < 0.5 ? 'left' : 'right', mimic: n >= 7 && rng() < 0.5, vMul: n === 1 && i === 1 ? 1.15 : 1,
+  let C = ats.map((at, i) => ({ at, side: rng() < 0.5 ? 'left' : 'right', mimic: n >= 7 && rng() < 0.5, vMul: n === 1 && i === 1 ? 1.15 : 1,
     beh: i === 0 && fresh.length ? fresh[Math.floor(rng() * fresh.length)] : cfg.behaviors[Math.floor(rng() * cfg.behaviors.length)] }));
-  G.womanIdx = 0;
+  if (early) {       // slow, long-lived kinds (percher, thief) are limited early on so the level still has room for the rest
+    const cap = { percher: 2, thief: 2 }, nSeen = {};
+    P.forEach((it, i) => { nSeen[it.kind] = (nSeen[it.kind] || 0) + 1; if (cap[it.kind] && nSeen[it.kind] > cap[it.kind] && !it.teaser) { it.kind = 'cruiser'; it.pair = false; } });
+  }
+  if (early) {
+    // one timeline: owner charges reserve their own windows and parrots fill the gaps, so nothing queues up or gets dropped
+    const seen = Object.assign({}, G.seen), zero = () => new Array(P.length + C.length + 2).fill(0), full = P.slice(), fullC = C.slice();
+    // the teaser leads the last group (right after a charge, when the street is clear) so its solo introduction costs no extra waiting
+    const placeTeaser = (list, nc) => {
+      const t = list.findIndex(x => x.teaser); if (t < 0 || nc < 2) return;
+      const [it] = list.splice(t, 1), m = list.length + 1;
+      let idx = 0; for (let g = 0; g < nc - 1; g++) idx += Math.floor(m / nc) + (g < m % nc ? 1 : 0);
+      list.splice(idx, 0, it);
+    };
+    let lay;
+    for (let nc = fullC.length; nc >= 2; nc--) {      // keep as many charges as leave room for at least 7 parrots (never fewer than 2 charges)
+      C = fullC.slice(0, nc); P = full.slice(); placeTeaser(P, nc);
+      lay = layoutTimeline(P, C, cfg, zero(), seen);
+      while (!lay.ok && P.length > nc + 2) {
+        let drop = 1 + Math.floor(rng() * (P.length - 1)); if (P[drop].teaser) drop = 0 + (drop > 1 ? drop - 1 : drop + 1);   // never the first (new type) or the teaser
+        P.splice(drop, 1); placeTeaser(P, nc); lay = layoutTimeline(P, C, cfg, zero(), seen);
+      }
+      if (lay.ok && (P.length >= 7 || nc === 2)) break;
+    }
+    if (lay.ok && lay.slack > 0) {                                  // spread what is left over, seeded
+      const m = P.length + C.length, w = Array.from({ length: m }, () => 0.5 + rng()), sw = w.reduce((a, b) => a + b, 0);
+      const ex = w.map(x => x / sw * lay.slack * 0.9);
+      const ex2 = []; let pi = 0;
+      // extras are consumed per parrot, then once per group's charge: rebuild in that order
+      const nG = C.length;
+      for (let g = 0; g < nG; g++) { const size = Math.floor(P.length / nG) + (g < P.length % nG ? 1 : 0); for (let j = 0; j < size; j++) ex2.push(ex[pi++]); ex2.push(ex[pi++]); }
+      const lay2 = layoutTimeline(P, C, cfg, ex2, seen); if (lay2.ok) lay = lay2;
+    }
+    P.forEach((it, i) => { it.at = Math.round(camAt(lay.parr[i], cfg.cam)); });
+    C.forEach((it, i) => { it.at = Math.round(camAt(lay.wom[i], cfg.cam)); });
+    G.planInfo = { planned: P.length, charges: C.length, slack: lay.slack, ok: lay.ok };
+  }
+  G.parrotPlan = P; G.parrotIdx = 0; G.warns = [];
+  G.womanPlan = C; G.womanIdx = 0;
   // bonus critters (max 2): a guaranteed one in level 1, then more often as levels go on
   G.critterQueue = [];
   const nCrit = n === 1 ? 1 : n === 2 ? (rng() < 0.5 ? 1 : 0) : (rng() < 0.6 ? 1 : 0) + (rng() < 0.3 ? 1 : 0);
@@ -342,7 +445,7 @@ function buildPlans(n) {
 
 function startLevel(n) {
   G.level = n; G.cfg = levelCfg(n); G.stage = 'run'; G.phase = '';
-  if (n > G.bestLevel) { G.bestLevel = n; try { localStorage.setItem(BESTLV_KEY, String(n)); } catch (e) {} }
+  if (n > G.bestLevel) { G.bestLevel = n; if (!DEBUG) try { localStorage.setItem(BESTLV_KEY, String(n)); } catch (e) {} }
   buildScenery(n); layoutBuildings(n); layoutDecor(n); layoutFG(n);
   G.cam = 0; G.speed = G.cfg.cam; G.dist = 0; G.levelStart = G.score;
   G.entities = []; G.parts = []; G.texts = []; G.shake = 0; G.hintT = 0; G.overT = 0; G.holdT = 0; G.winT = 0; G.mimic = null; G.pendingMimic = -1;
@@ -551,7 +654,8 @@ function parrotHit(e) {
   e.hit = true;
   feathers(S2(e.x), FEET_Y - e.c, 8, e.variant);
   G.shake = 4; Sfx.voice('squawk');
-  floatText('−3', S2(d.x), FEET_Y - d.dh - d.h - 14, '#ff5a5a', 14);
+  const lost = Math.min(3, G.score);
+  floatText('-' + lost, S2(d.x), FEET_Y - d.dh - d.h - 14, '#ff5a5a', 14);
   if (G.score < 3) {
     G.score = 0; d.stun = 1.0; d.inv = 2.1; d.bubble = 0; Sfx.sfx('stun');
   } else { G.score -= 3; d.inv = 1.0; Sfx.sfx('parrot_enter'); }
@@ -574,13 +678,14 @@ function endGame(reason) {
   wm.mode = 'none'; wm.over = true; wm.row = 0; wm.flip = false;
   wm.sx = S2(d.x) + (S2(d.x) < W - 160 ? 62 : -62); wm.flip = wm.sx < S2(d.x); wm.dh = 0;
   Sfx.music.setDanger(false);
-  if (G.score > G.best) { G.best = G.score; G.newBest = true; try { localStorage.setItem(STORE.best, String(G.best)); } catch (e) {} }
+  if (G.score > G.best) { G.best = G.score; G.newBest = true; if (!DEBUG) try { localStorage.setItem(STORE.best, String(G.best)); } catch (e) {} }
   G.rank = G.score > 0 ? addScore() : 0; if (!G.lb.length) G.lb = loadLB();
   if (reason === 'caught') Sfx.sfx('caught');
   const hi = G.rank === 1;
   G.homeDone = false;
+  Sfx.music.setLevel(1);
   Sfx.music.play('home', { delay: hi ? 3.9 : 1.8, onEnd: () => { G.homeDone = true; if (G.state === 'title') playTitleSong(); } });
-  if (hi) setTimeout(() => Sfx.sfx('new_high_score'), 1700);
+  if (hi) hiTimer = setTimeout(() => Sfx.sfx('new_high_score'), 1700);
 }
 function crush() {  // Missy is squeezed against the left screen edge: indignant HUFF, brief freeze, then game over
   G.state = 'crush'; G.holdT = 0.85; G.dog.bubble = 0.85; G.dog.stun = 0; G.dog.row = 4; G.dog.frame = 3;
@@ -598,21 +703,26 @@ function startWoman(opts = {}) {
   wm.beh = opts.beh || pick(cfg.behaviors);
   wm.side = opts.side || (Math.random() < 0.5 ? 'left' : 'right');
   wm.line = pickLine();
-  wm.mode = 'warn'; wm.warnT = opts.warnT || 2.4; wm.t = 0; wm.over = false; wm.dodged = false; wm.prevSign = 0;
+  wm.mode = 'warn'; wm.warnT = opts.warnT || WARN_T; wm.t = 0; wm.over = false; wm.dodged = false; wm.prevSign = 0;
   wm.dir = wm.side === 'left' ? 1 : -1;
   wm.sx = wm.side === 'left' ? -50 : W + 50; wm.x0 = wm.sx; wm.x1 = wm.side === 'left' ? W + 60 : -60;
   wm.v = (wm.beh === 'sprint' ? cfg.womanV * 1.35 : cfg.womanV) * (opts.vMul || 1);
-  wm.dh = 0; wm.dv = 0; wm.turned = false; wm.flip = wm.dir < 0; wm.pulse = 0;
+  wm.dh = 0; wm.dv = 0; wm.turned = false; wm.entered = false; wm.flip = wm.dir < 0; wm.pulse = 0;
   wm.phase = 'run'; wm.pt = 0; wm.marks = (WOMAN_MARKS[wm.beh] || []).slice(); wm.markIdx = 0;
   Sfx.shout(wm.line); Sfx.music.setDanger(true);
   if (opts.mimic) G.pendingMimic = 1.2;   // later levels: a Mimic piles on
 }
 
+function parrotsBlockOwner() {
+  const cfg = G.cfg;
+  if (G.warns.some(w => w.t + (W + 40 - CLEAR_X) / parrotSpeed(w.kind, w.first, cfg) > OWNER_LEAD)) return true;
+  return G.entities.some(e => e.type === 'parrot' && e.state !== 'flee' && !e.harmless && (S2(e.x) - CLEAR_X) / Math.max(40, e.kind === 'percher' ? G.speed : (e.v || 150)) > OWNER_LEAD);
+}
 function updateWoman(dt) {
   const wm = G.wm, d = G.dog;
   if (wm.mode === 'none') {
     const it = G.womanPlan[G.womanIdx];
-    const parrotsOut = G.level <= 4 && (G.warns.length > 0 || G.entities.some(e => e.type === 'parrot' && e.state !== 'flee'));   // ...and she waits for them to clear
+    const parrotsOut = G.level <= 4 && parrotsBlockOwner();   // ...and she waits until they are nearly clear (safety net: the plan already schedules this)
     if (G.stage === 'run' && it && G.cam >= it.at && G.cam < NOSPAWN_X - W && !G.solo && !parrotsOut) { G.womanIdx++; startWoman(it); }
     return;
   }
@@ -622,6 +732,7 @@ function updateWoman(dt) {
     if (wm.warnT <= 0) { wm.mode = 'charge'; wm.t = 0; Sfx.sfx('human_run'); }
     return;
   }
+  if (wm.sx >= -10 && wm.sx <= W + 10) wm.entered = true;     // the edge shout only shows before she first appears
   let v = wm.v;
   const u = clamp((wm.sx - wm.x0) / (wm.x1 - wm.x0), 0, 1);
   let pose = null;
@@ -795,7 +906,7 @@ function updatePlay(dt) {
       if (G.solo || (first && threatBusy())) break;          // a new type is introduced alone
       if (G.parrotGap > 0) break;                            // parrots held back (e.g. by a solo intro) come out one at a time, not as a stack
       const herTurn = G.womanPlan[G.womanIdx] && G.cam >= G.womanPlan[G.womanIdx].at;
-      if (G.level <= 4 && (G.wm.mode !== 'none' || herTurn)) break;   // levels 1-4: parrots hold off while her charge is due or under way
+      if (G.level <= 4 && (herTurn || G.wm.mode === 'warn' || (G.wm.mode === 'charge' && G.wm.t < womanFreeAt(G.wm)))) break;   // levels 1-4: parrots hold off while her charge is due or under way (safety net)
       G.parrotIdx++; beginParrotWarn(it, first);
       G.parrotGap = Math.max(1.0, 1.4 - 0.05 * (G.level - 1));
     }
@@ -813,8 +924,8 @@ function updatePlay(dt) {
   }
   updateWarns(dt);
   updateParrots(dt);
-  // a solo introduction ends once the new parrot has flown past Missy, not when it finally leaves the screen
-  if (G.solo && !(G.wm.mode !== 'none' || G.mimic || G.warns.length || G.entities.some(e => e.type === 'parrot' && e.state !== 'flee' && S2(e.x) > S2(d.x) - 30))) G.solo = false;
+  // a solo introduction ends once the new parrot has flown past a fixed screen x (never Missy's position)
+  if (G.solo && !(G.wm.mode !== 'none' || G.mimic || G.warns.length || G.entities.some(e => e.type === 'parrot' && e.state !== 'flee' && S2(e.x) > SOLO_X))) G.solo = false;
   updateWoman(dt);
   if (G.state !== 'play') return;
   critterTick();
@@ -1079,7 +1190,7 @@ function pixelDisc(cx, cy, rad, col) {
   for (let dy = -rad; dy <= rad; dy++) { const hw = Math.floor(Math.sqrt(rad * rad - dy * dy)); ctx.fillRect(Math.round(cx - hw), Math.round(cy + dy), hw * 2 + 1, 1); }
 }
 // sun sinks through the afternoon; the moon rises at night
-function drawSunMoon(p, sk) {
+function drawSunMoon(p) {
   if (p < 4.6) {
     const u = clamp(p / 4.2, 0, 1), y = 34 + u * u * 150, warm = clamp((p - 1.5) / 2.5, 0, 1);
     const col = [255, Math.round(244 - 90 * warm), Math.round(170 - 120 * warm)];
@@ -1103,18 +1214,25 @@ function drawPlane(clk, sk) {
   ctx.restore();
   if (sk.stars > 0.2 && Math.floor(clk * 2) % 2) { ctx.fillStyle = '#ff4a4a'; ctx.fillRect(x + (dir > 0 ? 1 : -2), y, 1, 1); }   // blinking beacon
 }
+let skyCache = null;
+const STAR_COL = Array.from({ length: 101 }, (_, i) => 'rgba(255,255,240,' + (i / 100).toFixed(2) + ')');
 let LAMPS_LIT = [];
+const LIT_NOW = [];
 function drawBackground() {
   const sc = G.cam, clk = G.clock || 0, p = dayPhase(), sk = skyAt(p);
   // (a) sky: gradient by time of day, stars at night, the sun or moon, three depths of clouds, a distant plane
-  const sg = ctx.createLinearGradient(0, 0, 0, 170);
-  sg.addColorStop(0, rgb(sk.top)); sg.addColorStop(0.45, rgb(sk.mid)); sg.addColorStop(1, rgb(sk.hor));
-  ctx.fillStyle = sg; ctx.fillRect(0, 0, W, SIDEWALK_TOP);
+  const skKey = rgb(sk.top) + rgb(sk.mid) + rgb(sk.hor);
+  if (!skyCache || skyCache.key !== skKey) {      // the gradient only changes when the (integer) sky colours do
+    const sg = ctx.createLinearGradient(0, 0, 0, 170);
+    sg.addColorStop(0, rgb(sk.top)); sg.addColorStop(0.45, rgb(sk.mid)); sg.addColorStop(1, rgb(sk.hor));
+    skyCache = { key: skKey, g: sg };
+  }
+  ctx.fillStyle = skyCache.g; ctx.fillRect(0, 0, W, SIDEWALK_TOP);
   if (sk.stars > 0) for (const [x, y, ph, sz] of STARS) {
-    ctx.fillStyle = 'rgba(255,255,240,' + (sk.stars * (0.55 + 0.45 * Math.sin(clk * 2.3 + ph))).toFixed(2) + ')';
+    ctx.fillStyle = STAR_COL[Math.round(clamp(sk.stars * (0.55 + 0.45 * Math.sin(clk * 2.3 + ph)), 0, 1) * 100)];
     ctx.fillRect(x, y, sz, sz);
   }
-  drawSunMoon(p, sk);
+  drawSunMoon(p);
   const cloudA = 1 - 0.55 * sk.tintA / 0.42;
   ctx.globalAlpha = cloudA;
   for (const layer of [0, 1, 2]) for (const c of CLOUDS) {
@@ -1133,7 +1251,10 @@ function drawBackground() {
     const sx = b.x - bs;
     if (sx > W) break;
     if (sx + b.c.width < 0) continue;
-    ctx.drawImage(b.c, sx, SIDEWALK_TOP + 2 - b.c.height);
+    const by = SIDEWALK_TOP + 2 - b.c.height;
+    ctx.drawImage(b.c, sx, by);
+    if (b.c.hasFolk) for (const f of b.c.folk) { const s = folkSprite(f.name, Math.floor(clk * 2.2 + f.o) % 4); if (s) ctx.drawImage(s, sx + f.x, by + f.y); }   // the odd resident with a lively idle
+    if (b.c.lit && sk.glow > 0.05) LIT_NOW.push(b.c.lit, sx, by);
   }
   ctx.fillStyle = '#4a4f5c'; ctx.fillRect(0, SIDEWALK_TOP - 2, W, 4);   // building base shadow
   // sidewalk (1x)
@@ -1161,6 +1282,9 @@ function drawBackground() {
   for (let x = ro; x < W; x += 64) ctx.fillRect(x, 355, 34, 2);
   // evening falls over the whole street (characters are drawn after this, so they stay readable)
   if (sk.tintA > 0) { ctx.fillStyle = 'rgba(' + sk.tint + ',' + sk.tintA.toFixed(3) + ')'; ctx.fillRect(0, 0, W, H); }
+  // lit windows, neon signs and shop lights come on at night (prerendered overlays)
+  for (let i = 0; i < LIT_NOW.length; i += 3) { ctx.globalAlpha = Math.min(1, sk.glow * 1.1); ctx.drawImage(LIT_NOW[i], LIT_NOW[i + 1], LIT_NOW[i + 2]); }
+  ctx.globalAlpha = 1; LIT_NOW.length = 0;
   // street lamps switch on as it gets dark: a warm glow and a pool of light on the pavement
   if (sk.glow > 0) for (const [lx, ly] of LAMPS_LIT) {
     ctx.fillStyle = 'rgba(255,214,120,' + (0.22 * sk.glow).toFixed(3) + ')';
@@ -1264,7 +1388,7 @@ function drawCritter() {
 function drawDog() {
   const d = G.dog, sx = S2(d.x);
   const over = G.state === 'over' || (G.state === 'win' && G.phase === 'lie');
-  shadow(sx + (over ? 4 : 0), FEET_Y - d.dh + (d.dh > 0 ? 0 : 0), 22, 0.3 * (d.dh > 0 ? 0.8 : 1));
+  shadow(sx + (over ? 4 : 0), FEET_Y - d.dh, 22, 0.3 * (d.dh > 0 ? 0.8 : 1));
   if (d.inv > 0 && Math.floor(d.inv * 14) % 2 === 0) ctx.globalAlpha = 0.4;
   ctx.save();
   ctx.translate(Math.round(sx), Math.round(FEET_Y - d.dh));
@@ -1305,8 +1429,8 @@ function wrapText(str, maxW, font) {
   lines.push(cur); return lines;
 }
 
-// speech bubble: mode 'head' (tail points down to cx) or 'edge' (pinned to a screen edge, tail points off-screen)
-function drawSpeech(text, cx, bottomY, mode, side, pulse) {
+// speech bubble: mode 'edge' (pinned to a screen edge, tail points off-screen) or 'top' (Mimic's bubble, tail points up)
+function drawSpeech(text, mode, side, pulse) {
   const font = pfont(16);
   const lines = wrapText(text, 240, font);
   ctx.font = font;
@@ -1316,8 +1440,7 @@ function drawSpeech(text, cx, bottomY, mode, side, pulse) {
   if (mode === 'edge') {
     const off = Math.round(Math.sin(pulse * 9) * 2.5);
     bx = side === 'left' ? 14 + off : W - 14 - bw - off; by = Math.round(FEET_Y - 88 - bh / 2);
-  } else if (mode === 'top') { bx = side === 'left' ? 14 : W - 14 - bw; by = 98 + Math.round(Math.sin(pulse * 8) * 1.5); }
-  else { bx = clamp(cx - bw / 2, 4, W - 4 - bw); by = bottomY - bh - 8; }
+  } else { bx = side === 'left' ? 14 : W - 14 - bw; by = 98 + Math.round(Math.sin(pulse * 8) * 1.5); }
   ctx.fillStyle = '#1c1a26'; ctx.fillRect(bx - 2, by - 2, bw + 4, bh + 4);
   ctx.fillStyle = '#fff'; ctx.fillRect(bx, by, bw, bh);
   ctx.fillStyle = '#1c1a26';
@@ -1328,17 +1451,12 @@ function drawSpeech(text, cx, bottomY, mode, side, pulse) {
     for (let i = 0; i < 8; i++) { ctx.fillRect(ex + dir * (i + 1) - (dir < 0 ? 1 : 0), ty - (8 - i), 1, (8 - i) * 2); }
     // arrow chevrons on the edge
     outlineText(side === 'left' ? '<<' : '>>', side === 'left' ? 20 : W - 20, by + bh + 12, pfont(16), '#ff6a5a', 'center', '#1c1a26', 3);
-  } else if (mode === 'top') {
+  } else {
     const tx = side === 'left' ? bx + 24 : bx + bw - 24;   // tail points up: it comes from above
     for (let i = 0; i < 6; i++) ctx.fillRect(tx - (6 - i) - 1, by - 2 - i + 1, (6 - i) * 2 + 2, 1);
     ctx.fillStyle = '#fff';
     for (let i = 0; i < 6; i++) ctx.fillRect(tx - (6 - i), by - i, (6 - i) * 2, 1);
     drawFeather(bx + bw - 15, Math.round(by + bh / 2) - 7);
-  } else {
-    const tx = clamp(cx, bx + 10, bx + bw - 10);
-    for (let i = 0; i < 6; i++) { ctx.fillRect(Math.round(tx) - (6 - i) - 1, by + bh + 2 + i - 2, (6 - i) * 2 + 2, 1); }
-    ctx.fillStyle = '#fff';
-    for (let i = 0; i < 6; i++) { ctx.fillRect(Math.round(tx) - (6 - i), by + bh + i - 1, (6 - i) * 2, 1); }
   }
   ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#1c1a26'; ctx.font = font;
   lines.forEach((l, i) => ctx.fillText(l, Math.round(bx + 8), Math.round(by + 5 + 8 + i * 17)));
@@ -1352,7 +1470,7 @@ function drawFeather(x, y) {   // tell-tale feather icon on a Mimic's bubble
 
 function drawWoman() {
   const wm = G.wm;
-  if (wm.mode === 'warn') { drawSpeech(wm.line, 0, 0, 'edge', wm.side, wm.pulse); return; }
+  if (wm.mode === 'warn') { drawSpeech(wm.line, 'edge', wm.side, wm.pulse); return; }
   if (G.state === 'title' || (wm.mode === 'none' && !wm.over)) return;
   const sx = Math.round(wm.sx), y = FEET_Y - wm.dh - 30 * WOMAN_SCALE;
   shadow(sx, FEET_Y, 17 * (1 - Math.min(0.5, wm.dh / 250)), 0.28);
@@ -1360,7 +1478,7 @@ function drawWoman() {
   ctx.drawImage(IMG.woman, wm.frame * 32, wm.row * 32, 32, 32, -16 * WOMAN_SCALE, Math.round(y), 32 * WOMAN_SCALE, 32 * WOMAN_SCALE);
   ctx.restore();
   // the shout only announces her: it stays pinned at her edge, pointing at her, until she's on screen
-  if (wm.mode === 'charge' && (sx < -10 || sx > W + 10)) drawSpeech(wm.line, 0, 0, 'edge', wm.side, wm.pulse);
+  if (wm.mode === 'charge' && !wm.entered) drawSpeech(wm.line, 'edge', wm.side, wm.pulse);
 }
 
 function drawParts() {
@@ -1439,7 +1557,20 @@ function panel(x, y, w, h) {
 }
 
 // leaderboard list: rank | LEVEL | METERS | FOOD | DATE (right-aligned numbers). hl = rank to highlight (1-based), n = rows shown
+// the leaderboard is drawn into an offscreen canvas that is only redrawn when its contents or highlight change
+let lbCache = null;
 function drawLB(x, y, hl, n = 10) {
+  const key = hl + '|' + n + '|' + G.lb.slice(0, n).map(e => e.t + ',' + e.level + ',' + e.m + ',' + e.score).join(';');
+  const PX = 14, PY = 14, h = 2 * 17 + 4 + n * 17 + 2 * PY;
+  if (!lbCache || lbCache.key !== key) {
+    const [c, cx2] = newCanvas(PX + 372 + 14, h), main = ctx;
+    ctx = cx2;
+    try { drawLBRaw(PX, PY, hl, n); } finally { ctx = main; }
+    lbCache = { key, c };
+  }
+  ctx.drawImage(lbCache.c, x - PX, y - PY);
+}
+function drawLBRaw(x, y, hl, n) {
   const f = pfont(16), RH = 17;
   const cRank = x, cLv = x + 112, cM = x + 184, cFood = x + 232, cDate = x + 248;
   outlineText('TOP ' + n, x + 160, y, pfont(16), '#ffd24a', 'center', '#1c1a26', 2);
@@ -1484,14 +1615,17 @@ function drawSoundBlocked(y) {
 }
 // ---- title screen: the level-1 street with Missy ready to go, a chunky tilted title and the owner's medallion.
 // Static art is baked once into an offscreen layer (hard-edged: alpha is thresholded).
-function hardenAlpha(c) {   // no anti-aliasing: every pixel fully on or off
+function hardenAlpha(c) {   // no anti-aliasing: every pixel fully on or off (skipped if the canvas is tainted, e.g. file:// in Chrome)
+  try { hardenAlphaRaw(c); } catch (e) {}
+}
+function hardenAlphaRaw(c) {
   const d = c.getImageData(0, 0, c.canvas.width, c.canvas.height), a = d.data;
   for (let i = 3; i < a.length; i += 4) a[i] = a[i] >= 110 ? 255 : 0;
   c.putImageData(d, 0, 0);
 }
 function newCanvas(w, h) { const c = document.createElement('canvas'); c.width = w; c.height = h; const x = c.getContext('2d'); x.imageSmoothingEnabled = false; return [c, x]; }
 // a line of big title text: vertical red-orange-yellow gradient, thick black outline, dark drop shadow; drawn rotated into c2
-function bigText(c2, str, cx, cy, ang, grad, outline, shadow) {
+function bigText(c2, str, cx, cy, ang, outline, shadow) {
   const [t, x] = newCanvas(360, 100), pad = 50;
   x.font = pfont(48); x.textAlign = 'center'; x.textBaseline = 'middle';
   const ox = 180, oy = 50;
@@ -1528,11 +1662,11 @@ function medallion(c, cx, cy, r, bg, img, sx, sy, scale) {
 let titleLayer = null;
 function buildTitleLayer() {
   const [B, b] = newCanvas(W, H);
-  bigText(b, "Missy's", 112, 40, -0.07, 0, 3, 4);
-  bigText(b, 'Big Day Out!', 170, 90, -0.07, 0, 3, 4);
+  bigText(b, "Missy's", 112, 40, -0.07, 3, 4);
+  bigText(b, 'Big Day Out!', 170, 90, -0.07, 3, 4);
   hardenAlpha(b);
   const [M, m] = newCanvas(W, H);
-  medallion(m, 372, 186, 50, '#5aa8e0', IMG.woman, 0, 0, 6);
+  try { medallion(m, 372, 186, 50, '#5aa8e0', IMG.woman, 0, 0, 6); } catch (e) {}
   hardenAlpha(m);
   titleLayer = [B, M];
 }
@@ -1627,7 +1761,7 @@ function render() {
   drawWoman();   // in front of everything: she runs through obstacles
   drawParts();
   drawTexts();
-  if (G.mimic) drawSpeech(G.mimic.line, 0, 0, 'top', G.mimic.side, G.mimic.t);
+  if (G.mimic) drawSpeech(G.mimic.line, 'top', G.mimic.side, G.mimic.t);
   drawForeground();
   ctx.restore();
   if (G.state === 'title') drawTitle();
@@ -1640,6 +1774,7 @@ function render() {
 // =====================================================================
 let paused = false, touchMode = false;
 function press(action) {
+  if (document.body.classList.contains('portrait')) return;   // the rotate overlay is up: nothing starts behind it
   ensureAudio();
   if (paused && action === 'jump' && !document.body.classList.contains('portrait')) { togglePause(); return; }  // Space unpauses
   if (G.state === 'title') { if (action === 'jump' && !G.showLB) startGame(); else if (action === 'jump') { G.showLB = false; startGame(); } return; }
@@ -1655,9 +1790,9 @@ function togglePause() {
   if (paused) Sfx.pause(); else Sfx.unpause();
 }
 
-function ensureAudio() { if (!paused) Sfx.unlock(); }
+function ensureAudio() { if (!paused && Sfx.blocked()) Sfx.unlock(); }
 addEventListener('keydown', e => {
-  ensureAudio();
+  if (!e.repeat) ensureAudio();
   const c = e.code;
   if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(c)) e.preventDefault();
   if (c === 'ArrowLeft') kb.left = true;
@@ -1665,7 +1800,7 @@ addEventListener('keydown', e => {
   else if (c === 'ArrowDown') kb.down = true;
   else if (c === 'KeyC') kb.clear = true;
   if (e.repeat) return;
-  if (G.state === 'title' && !G.audioTest && !/^(Key[ML]|Shift|Control|Alt|Meta|Caps|Tab|F\d|OS|ContextMenu|NumLock)/.test(c) && !(c === 'KeyC' && G.showLB)) { G.showLB = false; startGame(); return; }
+  if (G.state === 'title' && !G.audioTest && !/^(Key[MLP]|Escape|Shift|Control|Alt|Meta|Caps|Tab|F\d|OS|ContextMenu|NumLock)/.test(c) && !(c === 'KeyC' && G.showLB)) { G.showLB = false; startGame(); return; }
   // game over and level complete also continue on any key (M mutes, C clears scores)
   if ((G.state === 'over' || G.state === 'win') && !paused && !/^(Key[MCP]|Escape|Shift|Control|Alt|Meta|Caps|Tab|F\d|OS|ContextMenu|NumLock)/.test(c)) { press('jump'); return; }
   if (c === 'Space' || c === 'ArrowUp') press('jump');
@@ -1683,7 +1818,7 @@ addEventListener('keyup', e => {
   else if (c === 'ArrowDown') kb.down = false;
   else if (c === 'KeyC') kb.clear = false;
 });
-function autoPause() { if ((G.state === 'play' || G.state === 'win') && !paused) paused = true; }
+function autoPause() { if ((G.state === 'play' || G.state === 'win') && !paused) { paused = true; Sfx.pause(); } }   // stays paused until the player resumes
 addEventListener('blur', () => { autoPause(); kb.left = kb.right = kb.down = kb.clear = false; vk.left = vk.right = vk.down = false; G.jumpHeld = false; });
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) { autoPause(); Sfx.suspend(); }
@@ -1702,14 +1837,15 @@ cv.addEventListener('pointerdown', e => {
   }
   if (e.button === 2) press('huff'); else press('jump');
 });
-addEventListener('pointerup', e => { if (e.pointerType !== 'touch') G.jumpHeld = false; });
+for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture']) addEventListener(ev, e => { if (e.pointerType !== 'touch') G.jumpHeld = false; }, true);
 // Touch: tap anywhere (outside the buttons) to start / restart / continue / resume. Not during play.
 document.addEventListener('pointerdown', e => {
   if (e.pointerType !== 'touch') return;
   setTouch();
   if (e.target.closest && e.target.closest('.tbtn')) return;
-  Sfx.unlock();
-  if (paused && !document.body.classList.contains('portrait')) { togglePause(); return; }
+  if (!paused) Sfx.unlock();
+  if (document.body.classList.contains('portrait')) return;
+  if (paused) { togglePause(); return; }
   if (G.state === 'title' || G.state === 'over' || G.state === 'win') press('jump');
 });
 // On-screen buttons: pointer events tracked per pointerId so you can hold left/right and tap jump at once.
@@ -1718,23 +1854,25 @@ function bindBtn(id, down, up) {
   el.addEventListener('pointerdown', e => {
     e.preventDefault(); e.stopPropagation();
     try { el.setPointerCapture(e.pointerId); } catch (err) {}
-    active.add(e.pointerId); el.classList.add('on'); Sfx.unlock();
+    active.add(e.pointerId); el.classList.add('on'); if (!paused) Sfx.unlock();
     if (active.size === 1) down();
   });
   const rel = e => {
     if (!active.delete(e.pointerId)) return;
     if (!active.size) { el.classList.remove('on'); if (up) up(); }
   };
+  const reset = () => { if (active.size) { active.clear(); el.classList.remove('on'); if (up) up(); } };   // never leave a button stuck on
   el.addEventListener('pointerup', rel); el.addEventListener('pointercancel', rel); el.addEventListener('lostpointercapture', rel);
+  addEventListener('blur', reset); document.addEventListener('visibilitychange', () => { if (document.hidden) reset(); });
 }
 bindBtn('bLeft', () => { vk.left = true; }, () => { vk.left = false; });
 bindBtn('bRight', () => { vk.right = true; }, () => { vk.right = false; });
 bindBtn('bDuck', () => { vk.down = true; }, () => { vk.down = false; });
-bindBtn('bJump', () => { if (G.state === 'play') press('jump'); else press('jump'); }, () => { G.jumpHeld = false; });
+bindBtn('bJump', () => press('jump'), () => { G.jumpHeld = false; });
 bindBtn('bHuff', () => press('huff'));
 bindBtn('bPause', () => togglePause());
 function setTouch() { if (!touchMode) { touchMode = true; document.body.classList.add('touch'); resize(); } }
-if ((window.matchMedia && matchMedia('(pointer: coarse)').matches) || /[?&]touch=1/.test(location.search)) { touchMode = true; document.body.classList.add('touch'); }
+if ((window.matchMedia && matchMedia('(pointer: coarse)').matches) || (DEBUG && /[?&]touch=1/.test(location.search))) { touchMode = true; document.body.classList.add('touch'); }
 
 // ---- layout: one fixed 640x360 view everywhere, scaled uniformly (never cropped or stretched) ----
 function insets() { const cs = getComputedStyle(document.getElementById('sa')); return { l: parseFloat(cs.paddingLeft) || 0, r: parseFloat(cs.paddingRight) || 0 }; }
@@ -1789,11 +1927,12 @@ async function init() {
 }
 init();
 
-// ---- debug hooks for headless screenshots: ?level=N  ?critter=rabbit|cat|frog  ?seed=1  ?lb=1  ?scn=...&freeze=1 ----
+// ---- debug hooks (ONLY with ?debug=1, e.g. ?debug=1&scn=fuzz; they never write localStorage) for headless screenshots: ?level=N  ?critter=rabbit|cat|frog  ?seed=1  ?lb=1  ?scn=...&freeze=1 ----
 function step(n) { for (let i = 0; i < n; i++) update(DT); }
 function debugRun() {
+  if (!DEBUG) return;
   const q = new URLSearchParams(location.search), scn = q.get('scn');
-  window.__G = G; window.__dbg = { step, startWoman, spawnParrot, spawnCritter, addObstacle, addFood, OBST: () => OBST };
+  window.__G = G; window.__dbg = { step, buildPlans, startLevel, startWoman, spawnParrot, spawnCritter, addObstacle, addFood, OBST: () => OBST };
   if (q.has('seed')) { // sample leaderboard
     const now = Date.now(), mk = (s, l, m, ago) => ({ t: now - ago * 3600e3, score: s, level: l, m });
     saveLB([mk(212, 5, 51, 30), mk(160, 4, 75, 5), mk(133, 4, 22, 52), mk(98, 3, 60, 70), mk(75, 3, 18, 100), mk(61, 2, 75, 130), mk(44, 2, 30, 200), mk(30, 1, 75, 260), mk(18, 1, 40, 300), mk(7, 1, 12, 400)]);
@@ -1856,3 +1995,22 @@ function fuzz() { // headless self-test, results in document.title
   }
   document.title = JSON.stringify(out);
 }
+
+// ---- new-version check: GitHub Pages can't be told not to cache, so a page that's been open (or cached) a while
+// asks version.json for the deployed build id and reloads itself at a fresh URL when a newer one is live.
+// It only reloads on the title screen or while paused, never mid-run, and only once per new build.
+let pendingBuild = null;
+function reloadIfNewer() {
+  if (!pendingBuild || !(G.state === 'title' || paused)) return;
+  if (new URLSearchParams(location.search).get('v') === pendingBuild) return;   // already reloaded for it
+  location.replace(location.pathname + '?v=' + pendingBuild);
+}
+function checkVersion() {
+  if (!window.BUILD_ID || !/^https?:$/.test(location.protocol)) return;          // dev page or a downloaded copy
+  fetch('version.json?t=' + Date.now(), { cache: 'no-store' }).then(r => r.ok ? r.json() : null).then(v => {
+    if (v && v.build && v.build !== window.BUILD_ID) { pendingBuild = v.build; reloadIfNewer(); }
+  }).catch(() => {});
+}
+checkVersion();
+document.addEventListener('visibilitychange', () => { if (!document.hidden) checkVersion(); });
+setInterval(reloadIfNewer, 1000);
