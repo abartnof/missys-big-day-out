@@ -209,14 +209,15 @@ function levelCfg(n) {
     cam: Math.min(75 + (lv - 1) * 13, 175),
     womanCount: lv === 1 ? 1 : Math.min(6, lv + (lv > 3 ? 0 : 0)),
     womanV: Math.min(150 + (lv - 1) * 14, 260),
-    parrotGap: Math.max(3.2, 11 - (lv - 1) * 1.3),
-    parrotVx: Math.min(45 + (lv - 1) * 14, 130),
-    obstP: Math.min(0.55, 0.30 + 0.04 * (lv - 1)),
-    obstGap: [Math.max(190, 400 - 45 * (lv - 1)), Math.max(300, 580 - 45 * (lv - 1))],
+    parrotV: Math.min(120 + (lv - 1) * 17, 260),            // screen-space flight speed (px/s)
+    parrotCount: lv === 1 ? 7 : Math.min(12, 6 + lv),
+    warnT: 0.9 - 0.4 * clamp((lv - 1) / 7, 0, 1),          // off-screen warning before a parrot enters (s)
+    dipW: Math.max(65, 100 - (lv - 2) * 7),
+    obstP: Math.min(0.55, 0.40 - 0.02 * Math.min(lv - 1, 3) + 0.03 * Math.max(0, lv - 3)),
+    obstGap: [Math.max(180, 300 - 30 * (lv - 1)), Math.max(280, 440 - 40 * (lv - 1))],
     highP: Math.max(0.07, 0.17 - 0.015 * (lv - 1)),
     behaviors: ['run', lv >= 3 && 'sprint', lv >= 4 && 'lunge', lv >= 4 && 'hop', lv >= 5 && 'turn', lv >= 6 && 'leap'].filter(Boolean),
     parrotKinds: ['cruiser', lv >= 2 && 'swooper', lv >= 3 && 'percher', lv >= 4 && 'thief', lv >= 5 && 'flock', lv >= 6 && 'mimic'].filter(Boolean),
-    swoopDip: Math.min(80, 40 + lv * 6),
   };
 }
 
@@ -236,7 +237,7 @@ let OBST = [];
 const G = {
   state: 'loading', t: 0, cam: 0, speed: 75, dist: 0, score: 0, best: 0, bestLevel: 1, newBest: false, reason: '',
   level: 1, cfg: null, stage: 'run', levelStart: 0, cardT: 0,
-  entities: [], parts: [], texts: [], dog: null, wm: null, mimic: null, nextSpawnX: 0, nextParrot: 6, womanAt: [], womanIdx: 0, lastLine: '',
+  entities: [], parts: [], texts: [], dog: null, wm: null, mimic: null, nextSpawnX: 0, parrotPlan: [], parrotIdx: 0, warns: [], seen: {}, solo: false, womanPlan: [], womanIdx: 0, lastLine: '',
   jumpBuf: 0, jumpHeld: false, titleT: 0, shake: 0, hintT: 0, overT: 0, holdT: 0, winT: 0, phase: '', lieT: 0, toilet: null,
   lb: [], rank: 0, showLB: false, clearHold: 0, pushCd: 0, wasPush: false, pendingMimic: -1,
 };
@@ -276,16 +277,44 @@ function newDog() {
 }
 function newWoman() {
   return { mode: 'none', sx: -100, dh: 0, dv: 0, dir: 1, v: 0, beh: 'run', line: '', side: 'left', t: 0, warnT: 0, ft: 0, frame: 0, row: 0,
-    lunged: false, lungeT: 0, turned: false, turnX: 0, hopT: 0, x0: 0, x1: 0, flip: false, over: false, dodged: false, prevSign: 0 };
+    turned: false, x0: 0, x1: 0, flip: false, over: false, dodged: false, prevSign: 0, phase: 'run', pt: 0, marks: [], markIdx: 0 };
 }
 
 // a fresh run: level 1, score 0
 function startGame() {
-  G.score = 0; G.newBest = false; G.reason = ''; G.rank = 0; G.t = 0;
+  G.score = 0; G.newBest = false; G.reason = ''; G.rank = 0; G.t = 0; G.seen = {};
   startLevel(1); G.bannerT = 3.4;
   G.state = 'play';
 }
 // begin level n (street, camera, Missy and the owner are reset; score is carried over)
+// NES rules: every NPC follows a pre-determined schedule and pattern (by type + level + a seeded random)
+// and never reads Missy's position or velocity. Difficulty comes from speed, density and pattern complexity.
+const BEH_UNLOCK = { sprint: 3, lunge: 4, hop: 4, turn: 5, leap: 6 };
+function buildPlans(n) {
+  const cfg = G.cfg, rng = makeRng(9001 + n * 131);
+  const kinds = cfg.parrotKinds, newest = n > 1 && n <= 6 ? kinds[kinds.length - 1] : null;
+  const lo = 640, hi = NOSPAWN_X - W - 320, cnt = cfg.parrotCount;
+  G.parrotPlan = [];
+  for (let i = 0; i < cnt; i++) {
+    const at = Math.round(lo + (hi - lo) * 0.92 * i / Math.max(1, cnt - 1) + (i ? (rng() - 0.5) * 100 : 0));
+    let kind = kinds[Math.floor(rng() * kinds.length)];
+    if (i === 0 && newest) kind = newest;
+    const pair = kind === 'cruiser' && rng() < (n === 1 ? 0.3 : n <= 3 ? 0.25 : 0.2), lowFirst = rng() < 0.5;   // pair: head + low heights, a comfortable distance apart
+    G.parrotPlan.push({ at, kind, pair, low: kind === 'cruiser' && (pair ? lowFirst : n >= 3 && rng() < 0.35), variant: PARROTS[Math.floor(rng() * PARROTS.length)] });
+  }
+  G.parrotIdx = 0; G.warns = [];
+  const c = cfg.womanCount, ats = c === 1 ? [1050] : Array.from({ length: c }, (_, i) => 800 + (1500 * i) / (c - 1));
+  const fresh = cfg.behaviors.filter(b => BEH_UNLOCK[b] === n);
+  G.womanPlan = ats.map((at, i) => ({ at, side: rng() < 0.5 ? 'left' : 'right', mimic: n >= 7 && rng() < 0.5,
+    beh: i === 0 && fresh.length ? fresh[Math.floor(rng() * fresh.length)] : cfg.behaviors[Math.floor(rng() * cfg.behaviors.length)] }));
+  G.womanIdx = 0;
+  // bonus critters (max 2): a guaranteed one in level 1, then more often as levels go on
+  G.critterQueue = [];
+  const nCrit = n === 1 ? 1 : n === 2 ? (rng() < 0.5 ? 1 : 0) : (rng() < 0.6 ? 1 : 0) + (rng() < 0.3 ? 1 : 0);
+  for (let i = 0; i < nCrit; i++) G.critterQueue.push({ at: (nCrit === 1 ? 0.35 + 0.3 * rng() : 0.28 + 0.4 * i + 0.1 * rng()) * LEVEL_PX,
+    kind: (n === 1 ? ['rabbit', 'cat'] : ['rabbit', 'cat', 'frog'])[Math.floor(rng() * (n === 1 ? 2 : 3))], side: rng() < 0.5 ? 'left' : 'right', seed: Math.floor(rng() * 1e6) });
+}
+
 function startLevel(n) {
   G.level = n; G.cfg = levelCfg(n); G.stage = 'run'; G.phase = '';
   if (n > G.bestLevel) { G.bestLevel = n; try { localStorage.setItem(BESTLV_KEY, String(n)); } catch (e) {} }
@@ -293,11 +322,10 @@ function startLevel(n) {
   G.cam = 0; G.speed = G.cfg.cam; G.dist = 0; G.levelStart = G.score;
   G.entities = []; G.parts = []; G.texts = []; G.shake = 0; G.hintT = 0; G.overT = 0; G.holdT = 0; G.winT = 0; G.mimic = null; G.pendingMimic = -1;
   G.dog = newDog(); G.wm = newWoman(); G.jumpBuf = 0; G.pushCd = 0; G.wasPush = false;
-  G.nextSpawnX = 480; G.nextParrot = G.cfg.parrotGap * rnd(0.95, 1.25);
-  const c = G.cfg.womanCount; G.womanIdx = 0;
-  G.womanAt = c === 1 ? [1050] : Array.from({ length: c }, (_, i) => 800 + (1500 * i) / (c - 1));
+  G.nextSpawnX = 480; G.solo = false;
+  buildPlans(n);
   G.toilet = { blink: 0, blinkT: rnd(2, 4.5), frame: 0 };
-  G.critter = null; G.critterAt = Math.random() < 0.35 ? rnd(0.3, 0.65) * LEVEL_PX : -1; G.critterKind = pick(['rabbit', 'cat', 'frog']);
+  G.critter = null;
   G.entities.push({ type: 'toilet', x: TOILET_X, w: 64, h: 64 });
   for (let i = 0; i < 5; i++) addFood(TOILET_X - 280 + i * 34, 2, pick(REGULAR));
   G.cardT = 2.2; G.state = 'play';
@@ -326,6 +354,23 @@ function weighted(list) {
 
 function spawnPattern() {
   const x = G.nextSpawnX, r = Math.random(), cfg = G.cfg;
+  const lively = G.level <= 3;
+  if (lively && r < cfg.obstP && Math.random() < 0.45) {       // early levels: fun food set-pieces
+    const low = OBST.filter(o => o.minLevel <= 2 && o.h <= 40 && ['cone', 'crate', 'barrier', 'hydrant', 'bollard'].includes(o.name));
+    if (Math.random() < 0.5) {            // a row of treats on top of a barrier / crate
+      const def = pick(low.filter(o => o.name === 'barrier' || o.name === 'crate')), o = addObstacle(x + 60, def);
+      const n = def.name === 'barrier' ? 4 : 2;
+      for (let i = 0; i < n; i++) addFood(o.x + 8 + i * (o.w - 16) / Math.max(1, n - 1), o.h + 2, pickFood());
+      for (let i = 0; i < 3; i++) addFood(x + i * 28, 2, pickFood());
+      G.nextSpawnX = o.x + o.w + rnd(150, 240);
+    } else {                              // a ground trail leading into a jump over an obstacle, with an arc of treats
+      const n = 3; for (let i = 0; i < n; i++) addFood(x + i * 30, 2, pickFood());
+      const def = pick(low.filter(o => o.name !== 'barrier')), o = addObstacle(x + n * 30 + 90, def);
+      for (let i = 0; i < 5; i++) { const u = i / 4; addFood(o.x + o.w / 2 - 75 + u * 150, o.h + 12 + Math.sin(u * Math.PI) * 40, pickFood()); }
+      G.nextSpawnX = o.x + o.w + rnd(160, 260);
+    }
+    return;
+  }
   if (r < cfg.obstP) {
     const def = weighted(OBST.filter(o => o.minLevel <= G.level));
     const small = ['cone', 'bags', 'crate'].includes(def.name);
@@ -345,7 +390,7 @@ function spawnPattern() {
     if (q < 0.58) {
       const n = rndi(3, 7);
       for (let i = 0; i < n; i++) addFood(x + i * 34, 2, pickFood());
-      G.nextSpawnX = x + n * 34 + rnd(50, 140);
+      G.nextSpawnX = x + n * 34 + (lively ? rnd(30, 90) : rnd(50, 140));
     } else if (q < 0.74) {
       addFood(x + 30, 2, pick(HIGH));
       G.nextSpawnX = x + 150;
@@ -357,50 +402,82 @@ function spawnPattern() {
   }
 }
 
-// ---------- parrots ----------
-// kinds: cruiser (straight, head height), swooper (dips to head height), percher (waits on a pole, dives),
-// thief (harmless, steals food), flock (staggered cruisers), mimic (fake shout, no woman), decoy (harmless cameo)
-function parrotBase(kind, variant, x, c) {
-  return { type: 'parrot', kind, variant, x, c, base: c, vx: -G.cfg.parrotVx, fl: rnd(0, 8), t: 0, state: 'fly', vy: 0, hit: false, harmless: false };
-}
-function spawnParrot(kind, x, c) {
-  kind = kind || pick(G.cfg.parrotKinds);
-  const sx = x != null ? x : G.cam + W + 40;
-  if (kind === 'cruiser' || kind === 'head' || kind === 'low') {
-    const ch = c != null ? c : kind === 'low' ? 8 : (G.level >= 3 && Math.random() < 0.3 ? 8 : 32);
-    G.entities.push(parrotBase('cruiser', pick(PARROTS), sx, ch)); Sfx.sfx('parrot_enter');
-  } else if (kind === 'swooper' || kind === 'sine') {
-    const e = parrotBase('swooper', pick(PARROTS), sx, 105); e.vx *= 1.15; G.entities.push(e); Sfx.sfx('parrot_enter');
-  } else if (kind === 'percher') {
-    const px = x != null ? x : G.cam + W + 90;
-    G.entities.push({ type: 'pole', x: px, h: 100, w: 6 });
-    const e = parrotBase('percher', pick(PARROTS), px, 102); e.state = 'perch'; e.vx = 0; e.bobT = 0; e.alert = 0; G.entities.push(e);
-  } else if (kind === 'thief') {
-    const d = G.dog;
-    const food = G.entities.filter(f => f.type === 'food' && !f.gone && f.x > d.x + 90 && f.x < G.cam + W - 10 && !f.stolen).sort((a, b) => a.x - b.x)[0];
-    if (!food) return false;
-    const e = parrotBase('thief', 'grey', sx, 80); e.harmless = true; e.target = food; food.stolen = true; e.vx = 0; G.entities.push(e); Sfx.sfx('parrot_enter');
-  } else if (kind === 'flock') {
-    const hs = [32, 32, 8], n = rndi(2, 3);
-    for (let i = 0; i < n; i++) { const e = parrotBase('cruiser', pick(PARROTS), sx + i * 72, hs[i % 3]); G.entities.push(e); }
-    Sfx.sfx('parrot_enter');
-  } else if (kind === 'mimic') {
-    startMimic();
-  } else if (kind === 'decoy') {
-    const e = parrotBase('decoy', 'green', sx, c != null ? c : 170); e.harmless = true; e.vx *= 1.8; G.entities.push(e);
+// ---------- parrots (screen-space paths: constant speeds, fixed curves) ----------
+// cruiser: straight at a fixed height. swooper: enters high, dips to head height at a fixed screen x.
+// percher: waits on a pole (head-bob tell), then follows a fixed drop curve to head height and flies straight off.
+// thief: harmless, races to one food chosen at spawn. flock: staggered cruisers. mimic: fake shout bubble.
+const DIP_X = 300;
+const flockHeights = lv => lv >= 6 ? [32, 32, 8] : [32, 8];
+const swoopC = sx => 105 - 73 * Math.exp(-Math.pow((sx - DIP_X) / (G.cfg ? G.cfg.dipW : 100), 2));
+function parrotMarkers(it) {      // heights the path crosses, for the off-screen warning marker
+  switch (it.kind) {
+    case 'cruiser': return it.pair ? [32, 8] : [it.low ? 8 : 32];
+    case 'swooper': return [105];
+    case 'percher': return [102];
+    case 'thief': return [80];
+    case 'flock': return flockHeights(G.level);
   }
+  return [];
+}
+function threatBusy() {
+  return G.wm.mode !== 'none' || !!G.mimic || G.warns.length > 0 || G.entities.some(e => e.type === 'parrot' && e.state !== 'flee');
+}
+function findThiefTarget() {      // chosen at spawn from the food that is entering on the right
+  return G.entities.filter(f => f.type === 'food' && !f.gone && !f.stolen && S2(f.x) > W * 0.55 && S2(f.x) < W - 30).sort((a, b) => a.x - b.x)[0] || null;
+}
+function beginParrotWarn(it, first) {
+  if (it.kind === 'mimic') { G.seen.mimic = true; startMimic(); return true; }
+  let target = null;
+  if (it.kind === 'thief') { target = findThiefTarget(); if (!target) return false; target.stolen = true; }
+  const T = G.cfg.warnT + (first ? 0.3 : 0);
+  G.warns.push({ kind: it.kind, low: it.low, pair: it.pair, variant: it.variant, T, t: T, first, heights: parrotMarkers(it), arc: it.kind === 'swooper' && !G.seen.swooperArc, target });
+  if (it.kind === 'swooper') G.seen.swooperArc = true;     // dotted arc preview for the first swooper of the run
+  G.seen[it.kind] = true;
+  if (first) G.solo = true;
+  Sfx.sfx('parrot_enter');
   return true;
+}
+function parrotEntity(kind, variant, c, sx, v) {
+  const e = { type: 'parrot', kind, variant, sx, x: G.cam + sx, c, base: c, v, fl: rnd(0, 8), t: 0, state: 'fly', vy: 0, hit: false, harmless: false };
+  G.entities.push(e); return e;
+}
+function spawnParrotNow(w) {
+  const v = G.cfg.parrotV * (w.first ? 0.75 : 1), sx0 = w.sx0 != null ? w.sx0 : W + 40;
+  if (w.kind === 'cruiser') {
+    parrotEntity('cruiser', w.variant, w.c != null ? w.c : w.low ? 8 : 32, sx0, v);
+    if (w.pair) parrotEntity('cruiser', w.variant, w.low ? 32 : 8, sx0 + 230, v);   // second one at the other height, ~1.9 s behind
+  }
+  else if (w.kind === 'swooper') parrotEntity('swooper', w.variant, 105, sx0, v);
+  else if (w.kind === 'flock') (w.heights || flockHeights(G.level)).forEach((h, i) => parrotEntity('cruiser', w.variant, h, sx0 + i * 74, v));
+  else if (w.kind === 'percher') {
+    const px = G.cam + (w.sx0 != null ? w.sx0 : W + 90);
+    G.entities.push({ type: 'pole', x: px, h: 100, w: 6 });
+    const e = parrotEntity('percher', w.variant, 102, 0, v * 1.15); e.state = 'perch'; e.x = px; e.bobT = 0; e.alert = 0;
+  } else if (w.kind === 'thief') {
+    const e = parrotEntity('thief', 'grey', 80, sx0, Math.max(v * 1.6, 190)); e.harmless = true; e.target = w.target;
+  }
+}
+// debug helper: spawn right now, o = { sx, c }
+function spawnParrot(kind, o = {}) {
+  kind = kind === 'head' ? 'cruiser' : kind;
+  const w = { kind, low: o.c === 8, c: o.c, variant: pick(PARROTS), first: false, sx0: o.sx, heights: parrotMarkers({ kind, low: o.c === 8 }), target: kind === 'thief' ? findThiefTarget() : null };
+  if (kind === 'thief' && !w.target) return false;
+  if (kind === 'mimic') { startMimic(); return true; }
+  spawnParrotNow(w); return true;
+}
+function updateWarns(dt) {
+  for (const w of G.warns) { w.t -= dt; if (w.t <= 0) { w.done = true; spawnParrotNow(w); } }
+  G.warns = G.warns.filter(w => !w.done);
 }
 function pickLine() {
   let line; do { line = pick(LINES); } while (line === G.lastLine);
   G.lastLine = line; return line;
 }
 function startMimic() {
-  G.mimic = { line: pickLine(), t: 0, dur: 1.9, side: Math.random() < 0.5 ? 'left' : 'right' };
+  G.mimic = { line: pickLine(), t: 0, dur: 1.9, side: G.parrotIdx % 2 ? 'left' : 'right' };
   Sfx.shout(G.mimic.line, { mimic: true });
-  spawnParrot('decoy', G.cam + (G.mimic.side === 'left' ? -40 : W + 40), 168);
-  const e = G.entities[G.entities.length - 1];
-  if (G.mimic.side === 'left') { e.vx = 150 + G.speed; } else e.vx = -(100 + G.cfg.parrotVx);
+  const e = parrotEntity('decoy', 'green', 168, G.mimic.side === 'left' ? -40 : W + 40, G.mimic.side === 'left' ? -260 : 260);
+  e.harmless = true;
 }
 
 // =====================================================================
@@ -435,11 +512,11 @@ function doHuff() {
   for (let i = 0; i < 3; i++) G.parts.push({ k: 'bang', x: sx + d.face * (24 + i * 5), y: y + rnd(-6, 6), vx: d.face * (30 + i * 25), vy: -20 - i * 15, life: 0.55, t: 0, s: 1, col: '#fff' });
   G.parts.push({ k: 'ring', x: sx + d.face * 34, y: FEET_Y - d.dh - 14, vx: 0, vy: 0, life: 0.35, t: 0, s: d.face, col: '#fff' });
   for (const e of G.entities) {
-    if (e.type !== 'parrot' || e.harmless && e.kind === 'decoy' || !['fly', 'perch', 'dive', 'chase'].includes(e.state)) continue;
+    if (e.type !== 'parrot' || e.kind === 'decoy' || !['fly', 'perch', 'dive'].includes(e.state)) continue;
     const dx = (e.x - d.x) * d.face;
     if (dx > -70 && dx < 260 && e.x > G.cam - 20 && e.x < G.cam + W + 20) {
       if (e.target) e.target.stolen = false;
-      e.state = 'flee'; e.vy = rnd(150, 210); e.hit = true; feathers(S2(e.x), FEET_Y - e.c, 3, e.variant); Sfx.voice('flap');
+      e.state = 'flee'; e.vy = 170; e.hit = true; e.sx = S2(e.x); feathers(S2(e.x), FEET_Y - e.c, 3, e.variant); Sfx.voice('flap');
     }
   }
 }
@@ -487,6 +564,9 @@ function crush() {  // Missy is squeezed against the left screen edge: indignant
 // =====================================================================
 //  The woman (SkiFree-yeti role)
 // =====================================================================
+// Her tricks happen at fixed points along her run (fraction u of the way across), each with a wind-up pose first.
+const WOMAN_MARKS = { lunge: [0.3], hop: [0.22, 0.45, 0.68], turn: [0.5], leap: [0.22] };
+const WINDUP = { lunge: 0.36, hop: 0.32, turn: 0.34, leap: 0.42 };
 function startWoman(opts = {}) {
   const wm = G.wm, cfg = G.cfg || levelCfg(1);
   wm.beh = opts.beh || pick(cfg.behaviors);
@@ -495,20 +575,18 @@ function startWoman(opts = {}) {
   wm.mode = 'warn'; wm.warnT = opts.warnT || 1.6; wm.t = 0; wm.over = false; wm.dodged = false; wm.prevSign = 0;
   wm.dir = wm.side === 'left' ? 1 : -1;
   wm.sx = wm.side === 'left' ? -50 : W + 50; wm.x0 = wm.sx; wm.x1 = wm.side === 'left' ? W + 60 : -60;
-  const base = cfg.womanV;
-  wm.v = wm.beh === 'sprint' ? base * 1.7 : base;
-  wm.dh = 0; wm.dv = 0; wm.lunged = false; wm.lungeT = 0; wm.turned = false; wm.hopT = 0.4; wm.flip = wm.dir < 0;
-  wm.turnX = rnd(0.35, 0.65) * W; wm.pulse = 0;
+  wm.v = wm.beh === 'sprint' ? cfg.womanV * 1.7 : cfg.womanV;
+  wm.dh = 0; wm.dv = 0; wm.turned = false; wm.flip = wm.dir < 0; wm.pulse = 0;
+  wm.phase = 'run'; wm.pt = 0; wm.marks = (WOMAN_MARKS[wm.beh] || []).slice(); wm.markIdx = 0;
   Sfx.shout(wm.line); Sfx.music.setDanger(true);
-  if (G.level >= 7 && Math.random() < 0.5) G.pendingMimic = 1.2;   // later levels: a Mimic piles on
+  if (opts.mimic) G.pendingMimic = 1.2;   // later levels: a Mimic piles on
 }
 
 function updateWoman(dt) {
   const wm = G.wm, d = G.dog;
   if (wm.mode === 'none') {
-    if (G.stage === 'run' && G.womanIdx < G.womanAt.length && G.cam >= G.womanAt[G.womanIdx] && G.cam < NOSPAWN_X - W) {
-      G.womanIdx++; startWoman();
-    }
+    const it = G.womanPlan[G.womanIdx];
+    if (G.stage === 'run' && it && G.cam >= it.at && G.cam < NOSPAWN_X - W && !G.solo) { G.womanIdx++; startWoman(it); }
     return;
   }
   wm.t += dt; wm.pulse += dt;
@@ -518,28 +596,29 @@ function updateWoman(dt) {
     return;
   }
   let v = wm.v;
-  if (wm.beh === 'lunge') {
-    if (!wm.lunged && Math.abs(wm.sx - S2(d.x)) < 190 && (S2(d.x) - wm.sx) * wm.dir > 0) { wm.lunged = true; wm.lungeT = 0.5; }
-    if (wm.lungeT > 0) { wm.lungeT -= dt; v *= 2.5; }
-  }
-  if (wm.beh === 'hop') {
-    wm.hopT -= dt;
-    if (wm.dh <= 0 && wm.dv <= 0 && wm.hopT <= 0) { wm.dv = 520; wm.hopT = 0.35; }
-    if (wm.dv !== 0 || wm.dh > 0) { wm.dv -= 1750 * dt; wm.dh += wm.dv * dt; if (wm.dh <= 0) { wm.dh = 0; wm.dv = 0; } }
+  const u = clamp((wm.sx - wm.x0) / (wm.x1 - wm.x0), 0, 1);
+  let pose = null;
+  if (wm.phase === 'run' && !wm.turned && wm.markIdx < wm.marks.length && u >= wm.marks[wm.markIdx]) { wm.markIdx++; wm.phase = 'windup'; wm.pt = 0; }
+  if (wm.phase === 'windup') {           // crouch in place: the tell before the move
+    wm.pt += dt; v = 0; pose = [2, 0];
+    if (wm.pt >= WINDUP[wm.beh]) {
+      wm.pt = 0;
+      if (wm.beh === 'turn') { wm.turned = true; wm.dir = -wm.dir; wm.flip = wm.dir < 0; wm.phase = 'run'; Sfx.sfx('human_turn'); }
+      else { wm.phase = 'act'; if (wm.beh === 'hop') wm.dv = 520; }
+    }
+  } else if (wm.phase === 'act') {
+    wm.pt += dt;
+    if (wm.beh === 'lunge') { v *= 2.5; pose = [2, Math.min(2, Math.floor(wm.pt * 6))]; if (wm.pt >= 0.5) wm.phase = 'run'; }
+    else if (wm.beh === 'hop') { wm.dv -= 1750 * dt; wm.dh += wm.dv * dt; if (wm.dh <= 0) { wm.dh = 0; wm.dv = 0; wm.phase = 'run'; } }
+    else if (wm.beh === 'leap') { v *= 1.35; const s = clamp(wm.pt / 0.95, 0, 1); wm.dh = 4 * 150 * s * (1 - s); pose = [2, 1]; if (wm.pt >= 0.95) { wm.dh = 0; wm.phase = 'run'; } }
   }
   wm.sx += wm.dir * v * dt;
-  if (wm.beh === 'leap') {
-    const u = clamp((wm.sx - wm.x0) / (wm.x1 - wm.x0), 0, 1);
-    wm.dh = 4 * 150 * u * (1 - u);
-  }
-  if (wm.beh === 'turn' && !wm.turned && (wm.sx - wm.turnX) * wm.dir >= 0) { wm.turned = true; wm.dir = -wm.dir; wm.flip = wm.dir < 0; Sfx.sfx('human_turn'); }
-  if (wm.lungeT > 0) { wm.row = 2; wm.frame = Math.min(2, Math.floor((0.5 - wm.lungeT) * 8)); }
-  else if (wm.beh === 'leap') { wm.row = 2; wm.frame = 1; }
+  if (pose) { wm.row = pose[0]; wm.frame = pose[1]; }
   else { wm.row = 1; wm.ft += dt * (8 + v / 22); wm.frame = Math.floor(wm.ft) % 6; }
   // collision with Missy: tight boxes
   const dsx = S2(d.x), dx = Math.abs(wm.sx - dsx);
   if (dx < 12 + 12 && wm.dh < d.dh + d.h - 2 && wm.dh + 40 > d.dh + 2) { endGame('caught'); return; }
-  const sign = Math.sign(wm.sx - dsx);
+  const sign = Math.sign(wm.sx - dsx);   // (sound only) she ran past
   if (wm.prevSign && sign && sign !== wm.prevSign && !wm.dodged) { wm.dodged = true; Sfx.sfx('human_dodge'); }
   if (sign) wm.prevSign = sign;
   const out = wm.dir > 0 ? wm.sx > W + 70 : wm.sx < -70;
@@ -632,38 +711,30 @@ function updateParrots(dt) {
   for (const e of G.entities) {
     if (e.type !== 'parrot') continue;
     e.t += dt; e.fl += dt * 14;
-    if (e.state === 'flee') { e.x += e.vx * dt * 0.6; e.c += e.vy * dt; e.vy += 40 * dt; continue; }
+    if (e.state === 'flee') { e.sx += -60 * dt; e.c += e.vy * dt; e.vy += 40 * dt; e.x = G.cam + e.sx; continue; }
     if (e.kind === 'percher') {
-      if (e.state === 'perch') {
-        e.bobT += dt; const sxp = S2(e.x);
-        if (sxp < W && sxp > 0) {
-          const ph = (e.bobT * (e.alert > 0 ? 3.2 : 1.6)) % 1;
-          if (ph < dt * (e.alert > 0 ? 3.2 : 1.6) + 0.001) Sfx.sfx('percher_bob');
+      if (e.state === 'perch') {            // bob for ~1 s once the pole reaches a fixed screen x, then drop on a fixed curve
+        e.sx = S2(e.x); e.bobT += dt;
+        if (e.sx < W && e.sx > 0) {
+          const rate = e.alert > 0 ? 3.2 : 1.6, ph = (e.bobT * rate) % 1;
+          if (ph < dt * rate + 0.001) Sfx.sfx('percher_bob');
         }
-        const dist = sxp - S2(d.x);
-        if (e.alert <= 0 && dist < 260 && dist > -40) e.alert = 0.001;
-        if (e.alert > 0) {
-          e.alert += dt;
-          if (e.alert > 0.8) { e.state = 'dive'; e.t = 0; e.vx = (d.x + 10 - e.x) / 0.9; e.c0 = e.c; }
-        }
-      } else { // dive: head-height flight straight at Missy, then carries on past
-        e.x += e.vx * dt; e.c = Math.max(32, e.c0 - (e.c0 - 32) * clamp(e.t / 0.8, 0, 1));
-        if (e.vx > -60) e.vx = -60;
+        if (e.alert <= 0 && e.sx <= 470) e.alert = 0.001;
+        if (e.alert > 0) { e.alert += dt; if (e.alert > 1.0) { e.state = 'dive'; e.t = 0; } }
+      } else {                               // fixed path: smooth drop to head height, then straight off-screen
+        e.sx -= e.v * dt; const s = clamp(e.t / 0.8, 0, 1);
+        e.c = 102 - 70 * (s * s * (3 - 2 * s)); e.x = G.cam + e.sx;
       }
     } else if (e.kind === 'thief') {
-      if (e.state === 'fly' && e.target) {
-        const t = e.target;
-        if (t.gone) { e.target = null; e.state = 'flee'; e.vy = 120; continue; }
-        const tx = t.x, ty = t.base + 16;
-        const dx = tx - e.x, dy = ty - e.c, L = Math.hypot(dx, dy) || 1, sp = 200;
-        e.x += dx / L * sp * dt; e.c += dy / L * sp * dt; e.facing = dx > 0 ? 1 : -1;
-        if (L < 16) { t.gone = true; Sfx.sfx('thief_snatch'); floatText('Stolen!', S2(t.x), FEET_Y - ty - 14, '#ffb0b0', 12); feathers(S2(t.x), FEET_Y - ty, 4, 'grey'); e.state = 'flee'; e.vy = 130; e.vx = -120; e.target = null; }
-      }
-    } else {
-      e.x += e.vx * dt;
-      if (e.kind === 'swooper') e.c = 105 - G.cfg.swoopDip * 0 - (105 - 32) * Math.exp(-Math.pow((e.x - (d.x + 20)) / 105, 2));
+      const t = e.target;
+      if (!t || t.gone) { e.state = 'flee'; e.vy = 120; continue; }
+      const tx = S2(t.x), ty = t.base + 16, dx = tx - e.sx, dy = ty - e.c, L = Math.hypot(dx, dy) || 1;
+      e.sx += dx / L * e.v * dt; e.c += dy / L * e.v * dt; e.facing = dx > 0 ? 1 : -1; e.x = G.cam + e.sx;
+      if (L < 16) { t.gone = true; Sfx.sfx('thief_snatch'); floatText('Stolen!', S2(t.x), FEET_Y - ty - 14, '#ffb0b0', 12); feathers(S2(t.x), FEET_Y - ty, 4, 'grey'); e.state = 'flee'; e.vy = 130; e.target = null; }
+    } else {                                 // cruiser / swooper / decoy: constant speed along a fixed curve
+      e.sx -= e.v * dt; if (e.kind === 'swooper') e.c = swoopC(e.sx);
+      e.x = G.cam + e.sx;
     }
-    // hits (cruiser/swooper/flock, diving percher)
     const hot = !e.harmless && (e.kind !== 'percher' || e.state === 'dive');
     if (hot && !e.hit && Math.abs(e.x - d.x) < HW + 8 && e.c + 7 > d.dh && e.c - 7 < d.dh + d.h) parrotHit(e);
   }
@@ -689,9 +760,12 @@ function updatePlay(dt) {
 
   if (G.stage === 'run') {
     while (G.nextSpawnX < Math.min(G.cam + W + 160, NOSPAWN_X)) spawnPattern();
-    if (G.cam < NOSPAWN_X - W) {
-      G.nextParrot -= dt;
-      if (G.nextParrot <= 0) { if (spawnParrot() !== false || true) G.nextParrot = cfg.parrotGap * rnd(0.85, 1.3); }
+    // parrots come from the level's schedule (by camera position), never from where Missy is
+    while (G.parrotIdx < G.parrotPlan.length && G.cam >= G.parrotPlan[G.parrotIdx].at) {
+      const it = G.parrotPlan[G.parrotIdx], first = !G.seen[it.kind];
+      if (G.cam > NOSPAWN_X - W) { G.parrotIdx = G.parrotPlan.length; break; }
+      if (G.solo || (first && threatBusy())) break;          // a new type is introduced alone
+      G.parrotIdx++; beginParrotWarn(it, first);
     }
     if (G.pendingMimic > 0) { G.pendingMimic -= dt; if (G.pendingMimic <= 0) { G.pendingMimic = -1; startMimic(); } }
   }
@@ -705,7 +779,9 @@ function updatePlay(dt) {
       if (Math.abs(e.x - d.x) < HW + 12 && cy > d.dh - 8 && cy < d.dh + d.h + 10) eatFood(e);
     }
   }
+  updateWarns(dt);
   updateParrots(dt);
+  if (G.solo && !threatBusy()) G.solo = false;
   updateWoman(dt);
   if (G.state !== 'play') return;
   critterTick();
@@ -728,11 +804,12 @@ const CRITTERS = {
   cat: { img: 'critter_cat', n: 13, scale: 2, pts: 15, name: 'KITTY!', w: 40, h: 26 },
   frog: { img: 'critter_frog', n: 4, scale: 1, pts: 20, name: 'FROGGY!', w: 24, h: 22, faceLeft: true },
 };
-function spawnCritter(kind, side) {
+function spawnCritter(kind, side, seed) {
   kind = kind === 'bunny' ? 'rabbit' : kind;
-  side = side || (Math.random() < 0.5 ? 'left' : 'right');
-  G.critter = { kind, sx: side === 'left' ? -50 : W + 50, dir: side === 'left' ? 1 : -1, t: 0, state: 'run', phase: 0, frame: 0, sq: 0,
-    idle: rnd(0.1, 0.3), hopT: 0, hopD: 0.3, hopV: 0, hopH: 0, lt: 0, leapDone: false, leapAt: rnd(0.35, 0.6) * W, arc: 0, sup: 0 };
+  side = side || 'right';
+  const rng = makeRng(seed || 1);
+  G.critter = { rng, kind, sx: side === 'left' ? -50 : W + 50, dir: side === 'left' ? 1 : -1, t: 0, state: 'run', phase: 0, frame: 0, sq: 0,
+    idle: 0.1 + 0.2 * rng(), hopT: 0, hopD: 0.3, hopV: 0, hopH: 0, lt: 0, leapDone: false, leapAt: (0.35 + 0.25 * rng()) * W, arc: 0, sup: 0 };
   Sfx.voice({ rabbit: 'bunny_squeak', cat: 'cat_mew', frog: 'frog_croak' }[kind]);
 }
 function updateCritter(dt) {
@@ -757,12 +834,12 @@ function updateCritter(dt) {
     c.sq = Math.max(0, c.sq - dt);
     if (c.state === 'run') {
       c.idle -= dt; c.frame = Math.floor(c.t * 7) % 4;
-      if (c.idle <= 0) { c.state = 'hop'; c.hopT = 0; c.hopD = rnd(0.24, 0.4); c.hopH = rnd(16, 40); c.hopV = Math.random() < 0.15 ? -rnd(50, 90) : rnd(120, 280);
-        if (c.sx > -20 && c.sx < W + 20) Sfx.voice(Math.random() < 0.18 ? 'frog_croak' : 'frog_plip'); }
+      if (c.idle <= 0) { c.state = 'hop'; c.hopT = 0; c.hopD = 0.24 + 0.16 * c.rng(); c.hopH = 16 + 24 * c.rng(); c.hopV = c.rng() < 0.15 ? -(50 + 40 * c.rng()) : 120 + 160 * c.rng();
+        if (c.sx > -20 && c.sx < W + 20) Sfx.voice(c.rng() < 0.18 ? 'frog_croak' : 'frog_plip'); }
     } else {
       c.hopT += dt; const u = clamp(c.hopT / c.hopD, 0, 1);
       c.sx += c.dir * c.hopV * dt; c.arc = c.hopH * Math.sin(Math.PI * u); c.frame = 1;
-      if (c.hopT >= c.hopD) { c.state = 'run'; c.idle = rnd(0.1, 0.4); c.sq = 0.14; puff(c.sx, FEET_Y - c.sup, 2); }
+      if (c.hopT >= c.hopD) { c.state = 'run'; c.idle = 0.1 + 0.3 * c.rng(); c.sq = 0.14; puff(c.sx, FEET_Y - c.sup, 2); }
     }
   }
   const def = CRITTERS[c.kind], cdh = c.sup + c.arc;
@@ -777,11 +854,10 @@ function updateCritter(dt) {
 }
 function critterTick() {
   if (G.critter) { updateCritter(1 / 60); return; }
-  if (G.critterAt >= 0 && G.stage === 'run' && G.cam >= G.critterAt) {
-    if (G.cam > NOSPAWN_X - W) { G.critterAt = -1; return; }
-    if (G.wm.mode === 'none' && !G.mimic && G.wm.warnT <= 0 || (G.wm.mode === 'none' && !G.mimic)) {
-      spawnCritter(G.critterKind); G.critterAt = -1;
-    }
+  const q = G.critterQueue && G.critterQueue[0];
+  if (q && G.stage === 'run' && G.cam >= q.at) {
+    if (G.cam > NOSPAWN_X - W) { G.critterQueue.length = 0; return; }
+    if (G.wm.mode === 'none' && !G.mimic && !G.solo) { G.critterQueue.shift(); spawnCritter(q.kind, q.side, q.seed); }
   }
 }
 
@@ -1022,13 +1098,26 @@ function drawEntities() {
       let fr = Math.floor(e.fl) % 8, left = true, bob = 0;
       if (e.kind === 'percher' && e.state === 'perch') { fr = 7; bob = Math.sin(e.bobT * (e.alert > 0 ? 20 : 10)) > 0.4 ? 2 : 0; }
       if (e.kind === 'thief' && e.state === 'fly') left = (e.facing || -1) < 0;
-      if (e.state === 'flee' && e.vx > 0) left = false;
+      if (e.v < 0 && e.state !== 'flee') left = false;
       ctx.save(); ctx.translate(Math.round(sx), Math.round(FEET_Y - e.c + bob));
       if (left) ctx.scale(-1, 1);  // sprite faces right; parrots mostly fly left
       ctx.drawImage(img, fr * 16, 0, 16, 16, -16, -16, 32, 32); ctx.restore();
       if (e.kind === 'percher' && e.alert > 0 && e.state === 'perch') outlineText('!', sx, FEET_Y - e.c - 24, 'bold 16px "Courier New", monospace', '#ff6a5a', 'center');
       if (e.kind === 'thief' && e.state === 'fly') outlineText('?', sx, FEET_Y - e.c - 22, 'bold 12px "Courier New", monospace', '#ffd24a', 'center');
     }
+  }
+}
+
+// off-screen warning for a parrot: blinking "<!" marker at the right edge at the height(s) its path will cross,
+// plus (for the first swooper of a run) a dotted preview of the dip
+function drawWarns() {
+  for (const w of G.warns) {
+    const on = Math.floor(w.t * 10) % 2 === 0;
+    if (w.arc) {
+      for (let sx = W - 6; sx > 0; sx -= 12) { ctx.fillStyle = on ? '#fff' : '#ffd24a'; ctx.fillRect(Math.round(sx) - 1, Math.round(FEET_Y - swoopC(sx)) - 1, 3, 3); }
+      outlineText('dip', DIP_X, FEET_Y - 32 + 18, 'bold 10px "Courier New", monospace', '#ffd24a', 'center', '#1c1a26', 2);
+    }
+    if (on) for (const h of w.heights) outlineText('<!', W - 14, FEET_Y - h, 'bold 18px "Courier New", monospace', '#ff5a4a', 'center', '#1c1a26', 4);
   }
 }
 
@@ -1175,7 +1264,9 @@ function drawHUD() {
   outlineText('FOOD ' + String(G.score).padStart(4, '0'), W / 2 + 20, 14, 'bold 18px "Courier New", monospace', '#fff', 'center');
   outlineText('BEST ' + String(G.best).padStart(4, '0') + '  LV ' + G.bestLevel, W - 10, 11, 'bold 11px "Courier New", monospace', '#ffe680', 'right', '#1c1a26', 3);
   outlineText(Sfx.muted ? '\u266A MUTED (M)   P: pause' : Sfx.blocked() ? '\u266A OFF: CLICK   P: pause' : '\u266A ON   M: mute   P: pause', W - 10, 26, 'bold 10px "Courier New", monospace', '#cfe0ff', 'right', '#1c1a26', 2);
-  if (!paused && G.state !== 'title') drawSoundBlocked(46);
+  // a reminder of the keys, just under the HUD (computers only; touch has its buttons)
+  if (!touchMode) outlineText('ARROWS: move / duck   SPACE: jump   X: huff', W - 10, 44, 'bold 10px "Courier New", monospace', '#fff', 'right', '#1c1a26', 2);
+  if (!paused && G.state !== 'title') drawSoundBlocked(touchMode ? 46 : 60);
   if (G.bannerT > 0 && G.state === 'play') {   // run intro banner, fades out
     const a = clamp(G.bannerT / 0.9, 0, 1) * clamp((3.4 - G.bannerT) / 0.3, 0, 1);
     ctx.globalAlpha = a;
@@ -1319,7 +1410,7 @@ function drawWin() {
 function drawPause() {
   ctx.fillStyle = 'rgba(15,18,30,0.6)'; ctx.fillRect(0, 0, W, H);
   outlineText('PAUSED', W / 2, 150, 'bold 40px "Courier New", monospace', '#fff', 'center', '#2c2a44', 7);
-  outlineText('press P / Esc to resume', W / 2, 192, 'bold 14px "Courier New", monospace', '#ffe9a8', 'center');
+  outlineText(touchMode ? 'tap to resume' : 'press SPACE, P or Esc to resume', W / 2, 192, 'bold 14px "Courier New", monospace', '#ffe9a8', 'center');
 }
 
 function render() {
@@ -1329,6 +1420,7 @@ function render() {
   drawBackground();
   drawEntities();
   drawCritter();
+  drawWarns();
   drawDog();
   drawWoman();   // in front of everything: she runs through obstacles
   drawParts();
@@ -1350,6 +1442,7 @@ function press(action) {
   if (G.state === 'title') { if (action === 'jump' && !G.showLB) startGame(); else if (action === 'jump') { G.showLB = false; startGame(); } return; }
   if (G.state === 'over') { if (action === 'jump' && G.overT > 0.6) startGame(); return; }
   if (G.state === 'win') { if (action === 'jump' && G.lieT > 2.2 && !paused) startLevel(G.level + 1); return; }
+  if (paused && action === 'jump' && !document.body.classList.contains('portrait')) { togglePause(); return; }  // Space unpauses
   if (paused || G.state !== 'play') return;
   if (action === 'jump') { G.jumpBuf = BUFFER; G.jumpHeld = true; }
   if (action === 'huff') doHuff();
@@ -1506,22 +1599,27 @@ function debugRun() {
   if (!scn && !lvl && !q.has('critter')) return;
   startGame(); if (lvl > 1) startLevel(lvl);
   const d = G.dog, ob = n => OBST.find(o => o.name === n);
-  G.nextParrot = 1e9; G.womanAt = []; G.entities = G.entities.filter(e => e.type === 'toilet'); G.nextSpawnX = 1e9; G.critterAt = -1; G.cardT = 0;
+  G.parrotPlan = []; G.womanPlan = []; G.warns = []; G.entities = G.entities.filter(e => e.type === 'toilet'); G.nextSpawnX = 1e9; G.critterQueue = []; G.cardT = 0; G.bannerT = 0;
   if (q.get('critter')) { spawnCritter(q.get('critter'), 'right'); G.critter.sx = W * 0.55; step(20); }
-  if (lvl && !scn && !q.get('critter')) { G.nextSpawnX = 480; G.womanAt = [1050]; G.nextParrot = 5; step(60); }
+  if (lvl && !scn && !q.get('critter')) { G.nextSpawnX = 480; buildPlans(G.level); step(60); }
   if (scn === 'play') { G.nextSpawnX = 480; step(100); }
+  if (scn === 'l1') { G.nextSpawnX = 480; buildPlans(G.level); const T = parseInt(q.get('t') || '780', 10); for (let i = 0; i < T && G.state === 'play'; i++) { d.x = G.cam + 280; d.inv = 9; step(1); } }
   if (scn === 'hop') { addFood(d.x + 90, 2, 'meat1'); addFood(d.x + 160, 2, 'salmon'); addFood(d.x + 40, 2, 'fish'); addFood(d.x - 70, 2, 'bacon'); step(24); }
-  if (scn === 'parrot') { spawnParrot('cruiser', d.x + 120, 32); spawnParrot('cruiser', d.x + 230, 8); spawnParrot('swooper', d.x + 330); step(6); }
-  if (scn === 'lvl5') { G.level = 5; G.cfg = levelCfg(5); spawnParrot('swooper', d.x + 150); spawnParrot('flock', d.x + 300); spawnParrot('percher', d.x + 80); spawnParrot('swooper', d.x + 440); step(40); }
+  if (scn === 'parrot') { const sx = S2(d.x); spawnParrot('cruiser', { sx: sx + 120, c: 32 }); spawnParrot('cruiser', { sx: sx + 230, c: 8 }); spawnParrot('swooper', { sx: sx + 330 }); step(6); }
+  if (scn === 'warnparrot') { beginParrotWarn({ kind: 'cruiser', low: false, variant: 'green' }, true); step(25); }
+  if (scn === 'warnswoop') { G.level = 2; G.cfg = levelCfg(2); beginParrotWarn({ kind: 'swooper', variant: 'blue' }, true); step(20); }
+  if (scn === 'perch') { G.level = 3; G.cfg = levelCfg(3); spawnParrot('percher', { sx: 560 }); step(70); }
+  if (scn === 'lvl5') { G.level = 5; G.cfg = levelCfg(5); const sx = S2(d.x); spawnParrot('swooper', { sx: sx + 150 }); spawnParrot('flock', { sx: sx + 300 }); spawnParrot('percher', { sx: 500 }); spawnParrot('swooper', { sx: sx + 440 }); step(40); }
   if (scn === 'mimic') { G.level = 6; G.cfg = levelCfg(6); startMimic(); step(40); }
   if (scn === 'warn') { startWoman({ side: 'left', beh: 'run' }); step(70); }
   if (scn === 'charge') { startWoman({ side: 'right', beh: 'run', warnT: 0.1 }); step(100); }
   if (scn === 'stand') { const o = addObstacle(d.x - 40, ob('dumpster')); addFood(d.x + 60, o.h + 2, 'bone'); d.dh = o.h; d.dv = 0; d.ground = true; d.x += 10; step(3); }
-  if (scn === 'duck') { kb.down = true; spawnParrot('cruiser', d.x + 70, 32); step(8); }
+  if (scn === 'duck') { kb.down = true; spawnParrot('cruiser', { sx: S2(d.x) + 70, c: 32 }); step(8); }
   if (scn === 'over') { startWoman({ side: 'left', beh: 'run', warnT: 0.01 }); G.wm.sx = S2(d.x) - 40; G.score = 87; step(30); }
   if (scn === 'trap') { d.x = G.cam + 70; addObstacle(d.x + HW + 6, ob('crate2')); step(60); }
   if (scn === 'trapfreeze') { d.x = G.cam + 70; addObstacle(d.x + HW + 6, ob('crate2')); for (let i = 0; i < 600 && G.state === 'play'; i++) step(1); step(70); }
-  if (scn === 'stun') { G.score = 1; spawnParrot('cruiser', d.x + 20, 32); step(10); }
+  if (scn === 'stun') { G.score = 1; spawnParrot('cruiser', { sx: S2(d.x) + 20, c: 32 }); step(10); }
+  if (scn === 'windup') { startWoman({ side: 'left', beh: 'lunge', warnT: 0.01 }); step(60); while (G.wm.phase !== 'windup' && G.state === 'play') { G.dog.x = G.cam + 560; step(1); } step(10); }
   if (scn === 'end') { G.cam = 2930; d.x = G.cam + 260; G.nextSpawnX = 1e9; step(50); }
   if (scn === 'win') { G.score = 41; G.levelStart = 12; G.cam = 2990; d.x = TOILET_X - 60; step(260); }
   if (scn === 'lbover') { G.score = 160; G.level = 4; d.x = G.cam + 70; addObstacle(d.x + HW + 6, ob('crate2')); for (let i = 0; i < 600 && G.state === 'play'; i++) step(1); step(90); }
@@ -1533,14 +1631,14 @@ function debugRun() {
 function fuzz() { // headless self-test, results in document.title
   const out = { woman: [], levels: [] };
   for (const beh of ['run', 'sprint', 'lunge', 'hop', 'turn', 'leap']) for (const side of ['left', 'right']) {
-    startLevel(6); G.nextSpawnX = 1e9; G.nextParrot = 1e9; G.womanAt = []; let n = 0, caught = 0;
+    startLevel(6); G.nextSpawnX = 1e9; G.parrotPlan = []; G.womanPlan = []; let n = 0, caught = 0;
     G.wm = newWoman(); startWoman({ beh, side, warnT: 0.1 });
     while (G.wm.mode !== 'none' && n < 3000) { G.dog.stun = 0; G.wm.over = false; step(1); if (G.state === 'over') { G.state = 'play'; caught++; } G.dog.x = G.cam + 560; n++; }
     out.woman.push(beh + side[0] + ':' + n + (caught ? 'c' : ''));
   }
   // random-input play-through of several levels: no exceptions, level completes get reached via a walking bot
   for (const lv of [1, 3, 6, 9]) {
-    startGame(); startLevel(lv); G.womanAt = G.womanAt.slice(); let i = 0, jumps = 0;
+    startGame(); startLevel(lv); let i = 0, jumps = 0;
     for (; i < 60 * 240 && (G.state === 'play' || G.state === 'crush'); i++) {
       kb.right = (i % 160) < 110; kb.left = !kb.right && (i % 5 === 0); kb.down = (i % 90) > 72;
       if (i % 22 === 0) { G.jumpBuf = BUFFER; G.jumpHeld = true; jumps++; } if (i % 22 === 11) G.jumpHeld = false;
