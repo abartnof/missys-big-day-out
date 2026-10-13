@@ -1,4 +1,4 @@
-"""Build missys-big-day-out.html, the game as one self-contained page (JS inlined,
+"""Build missys-big-day-out.html (and an identical index.html), the game as one self-contained page (JS inlined,
 images as base64 data URIs, zero external requests) from the sources in src/.
 GitHub Pages serves it, and a downloaded copy plays by double-clicking.
 
@@ -23,6 +23,8 @@ def inline(m):
 html = re.sub(r'<script src="([^"]+)"></script>', inline, html)
 head_js = "<script>window.__ASSETS=" + json.dumps(assets) + ";</script>\n"
 html = html.replace("<script>", head_js + "<script>", 1)
-out = ROOT / "missys-big-day-out.html"
-out.write_text(html)
-print("wrote", out, len(html) // 1024, "KB")
+# The same page twice: missys-big-day-out.html is the one to download, and index.html is what
+# GitHub Pages serves at the site's root. (A redirect page there kept Safari's audio silent.)
+for name in ("missys-big-day-out.html", "index.html"):
+    (ROOT / name).write_text(html)
+print("wrote missys-big-day-out.html and index.html,", len(html) // 1024, "KB")
