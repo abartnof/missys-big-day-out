@@ -1665,7 +1665,7 @@ function updatePlay(dt) {
   const prog = clamp(G.cam / LEVEL_PX, 0, 1);
   let sp = cfg.cam * (1 + 0.18 * prog);
   if (G.stage === 'run' && G.cam >= STOP_START) {
-    G.stage = 'arrive'; Sfx.sfx('toilet_appears'); Sfx.music.play('danube'); Sfx.music.setDanger(false);
+    G.stage = 'arrive'; Sfx.sfx('toilet_appears'); Sfx.music.setDanger(false);
   }
   if (G.stage === 'arrive') { const u = clamp((G.cam - STOP_START) / (LEVEL_PX - STOP_START), 0, 1); sp *= Math.max(0, (1 - u) * (1 - u)); if (sp < 3) { sp = 0; G.cam = Math.max(G.cam, LEVEL_PX - 0.5); } }
   G.speed = sp;
@@ -2240,18 +2240,25 @@ function panel(x, y, w, h) {
 
 // leaderboard list (top 10): rank, score, level + metres, date/time. hl = rank to highlight (1-based)
 function drawLB(x, y, hl) {
-  const f = 'bold 11px "Courier New", monospace';
+  const f = 'bold 11px "Courier New", monospace', hf = 'bold 9px "Courier New", monospace';
+  // columns: rank | Level | Meters | Food | Date
+  const cLv = x + 44, cM = x + 88, cFood = x + 130, cDate = x + 140;
   outlineText('TOP 10', x + 105, y, 'bold 12px "Courier New", monospace', '#ffd24a', 'center', '#1c1a26', 2);
+  outlineText('LEVEL', cLv, y + 15, hf, '#cfe0ff', 'right', '#1c1a26', 2);
+  outlineText('METERS', cM, y + 15, hf, '#cfe0ff', 'right', '#1c1a26', 2);
+  outlineText('FOOD', cFood, y + 15, hf, '#ffe680', 'right', '#1c1a26', 2);
+  outlineText('DATE', cDate, y + 15, hf, '#b8bfd6', 'left', '#1c1a26', 2);
   for (let i = 0; i < 10; i++) {
-    const e = G.lb[i], yy = y + 17 + i * 13;
-    if (hl === i + 1) { ctx.fillStyle = 'rgba(255,210,74,0.30)'; ctx.fillRect(x - 6, yy - 7, 252, 14); }
+    const e = G.lb[i], yy = y + 28 + i * 12;
+    if (hl === i + 1) { ctx.fillStyle = 'rgba(255,210,74,0.30)'; ctx.fillRect(x - 6, yy - 6, 252, 12); }
     const col = hl === i + 1 ? '#fff6a0' : '#fff';
     if (!e) { outlineText('#' + (i + 1) + '  ---', x, yy, f, '#7c8296', 'left', '#1c1a26', 2); continue; }
     outlineText('#' + (i + 1), x, yy, f, col, 'left', '#1c1a26', 2);
-    outlineText(String(e.score), x + 58, yy, f, '#ffe680', 'right', '#1c1a26', 2);
-    outlineText('L' + e.level + ' ' + e.m + 'm', x + 66, yy, f, '#cfe0ff', 'left', '#1c1a26', 2);
-    outlineText(fmtDate(e.t), x + 134, yy, f, '#b8bfd6', 'left', '#1c1a26', 2);
-    if (hl === i + 1) outlineText('NEW', x + 242, yy, 'bold 10px "Courier New", monospace', '#8affb0', 'right', '#1c1a26', 2);
+    outlineText(String(e.level), cLv, yy, f, '#cfe0ff', 'right', '#1c1a26', 2);
+    outlineText(String(e.m), cM, yy, f, '#cfe0ff', 'right', '#1c1a26', 2);
+    outlineText(String(e.score), cFood, yy, f, '#ffe680', 'right', '#1c1a26', 2);
+    outlineText(fmtDate(e.t), cDate, yy, f, '#b8bfd6', 'left', '#1c1a26', 2);
+    if (hl === i + 1) outlineText('NEW', x + 250, yy, 'bold 10px "Courier New", monospace', '#8affb0', 'left', '#1c1a26', 2);
   }
 }
 
@@ -2379,10 +2386,10 @@ function render() {
 let paused = false, touchMode = false;
 function press(action) {
   ensureAudio();
+  if (paused && action === 'jump' && !document.body.classList.contains('portrait')) { togglePause(); return; }  // Space unpauses
   if (G.state === 'title') { if (action === 'jump' && !G.showLB) startGame(); else if (action === 'jump') { G.showLB = false; startGame(); } return; }
   if (G.state === 'over') { if (action === 'jump' && G.overT > 0.6) startGame(); return; }
   if (G.state === 'win') { if (action === 'jump' && G.lieT > 2.2 && !paused) startLevel(G.level + 1); return; }
-  if (paused && action === 'jump' && !document.body.classList.contains('portrait')) { togglePause(); return; }  // Space unpauses
   if (paused || G.state !== 'play') return;
   if (action === 'jump') { G.jumpBuf = BUFFER; G.jumpHeld = true; }
   if (action === 'huff') doHuff();
@@ -2422,7 +2429,7 @@ function autoPause() { if ((G.state === 'play' || G.state === 'win') && !paused)
 addEventListener('blur', () => { autoPause(); kb.left = kb.right = kb.down = kb.clear = false; vk.left = vk.right = vk.down = false; G.jumpHeld = false; });
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) { autoPause(); Sfx.suspend(); }
-  else if (!paused) Sfx.resume();
+  else { try { window.focus(); } catch (e) {} if (!paused) Sfx.resume(); }
 });
 // Safari is strict about user activation: resume synchronously inside every gesture handler
 for (const ev of ['pointerdown', 'mousedown', 'click', 'touchend', 'touchstart', 'keyup']) addEventListener(ev, () => ensureAudio(), true);
