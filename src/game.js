@@ -129,14 +129,24 @@ function makeCloud(w, h, rng, alpha) {
   return c;
 }
 
+// each level's street gets its own look: which windows and shopfronts it uses, how tall it is,
+// how much brick, and a texture skin (canvas blend modes over the stone facades)
+const STREET_STYLES = [
+  { name: 'downtown', win: [0, 1, 2, 3, 0], shop: [0, 1, 2, 3], oneFloor: 0.55, brickP: 0.45, skin: [] },
+  { name: 'suburbs', win: [1, 3, 3, 0], shop: [1, 2, 2], oneFloor: 0.9, brickP: 0, skin: [['color', '#f0d48c', 0.45], ['screen', '#fff4e0', 0.18]] },
+  { name: 'brick', win: [0, 2, 3, 0], shop: [0, 1, 2], oneFloor: 0.35, brickP: 0.7, skin: [['color', '#b4502e', 0.5], ['multiply', '#d8a890', 0.25]] },
+  { name: 'glass', win: [0, 2, 2, 0], shop: [0, 2], oneFloor: 0.15, brickP: 0.1, skin: [['color', '#3f78c0', 0.4], ['screen', '#cfe6ff', 0.1]] },
+  { name: 'decay', win: [4, 4, 2, 4, 1], shop: [0, 0, 3, 3], oneFloor: 0.5, brickP: 0.4, skin: [['color', '#7d6d52', 0.45], ['multiply', '#8d877a', 0.45]] },
+];
 function buildScenery(lv = 1) {
   const g = IMG.general;
   BUILDINGS.length = 0; CLOUDS.length = 0;
   const rng = makeRng(1234 + lv * 7919);
   const rp = a => a[Math.floor(rng() * a.length)];
-  const wins = [64, 96, 128, 160, 192].map(x => ({ x, y: 0, w: 32, h: 32, u: 2 }));
-  const windows = wins.slice(lv % 3).concat(wins.slice(0, lv % 3));
-  const shops = [{ x: 256, y: 0, w: 48, h: 48, u: 3 }, { x: 304, y: 0, w: 32, h: 48, u: 2 }, { x: 336, y: 0, w: 32, h: 48, u: 2 }, { x: 368, y: 0, w: 32, h: 48, u: 2 }];
+  const wins = [64, 96, 128, 160, 192].map(x => ({ x, y: 0, w: 32, h: 32, u: 2 }));   // 4-pane, blinds, dark, curtained, boarded
+  const allShops = [{ x: 256, y: 0, w: 48, h: 48, u: 3 }, { x: 304, y: 0, w: 32, h: 48, u: 2 }, { x: 336, y: 0, w: 32, h: 48, u: 2 }, { x: 368, y: 0, w: 32, h: 48, u: 2 }];   // shutter, door, awning, posters
+  const style = STREET_STYLES[(lv - 1) % STREET_STYLES.length];
+  const windows = style.win.map(i => wins[i]), shops = style.shop.map(i => allShops[i]);
   const bricks2 = [0, 48, 96, 144].map(y => ({ x: 456, y, w: 32, h: 48, u: 2 }));
   const bricks3 = [0, 48, 96, 144].map(y => ({ x: 448, y, w: 48, h: 48, u: 3 }));
   const pair = BRICKS[(lv - 1) % BRICKS.length];
@@ -144,7 +154,7 @@ function buildScenery(lv = 1) {
     const row = []; let left = units;
     while (left > 0) {
       let m;
-      if (left === 2 || left === 4) m = rp(pool2);
+      if (left === 2 || left === 4 || !pool3.length) m = rp(pool2);
       else if (left === 3) m = rp(pool3);
       else m = rng() < 0.5 ? rp(pool2) : rp(pool3);
       row.push(m); left -= m.u;
@@ -155,8 +165,8 @@ function buildScenery(lv = 1) {
   for (let n = 0; n < 12; n++) {
     const units = [4, 6, 6, 8][Math.floor(rng() * 4)];
     const rows = [];                                   // top -> bottom
-    const upper = rng() < 0.55 ? 1 : 2;
-    const brickRow = upper === 2 && rng() < 0.45;
+    const upper = rng() < style.oneFloor ? 1 : 2;
+    const brickRow = upper === 2 && rng() < style.brickP;
     for (let f = 0; f < upper; f++) {
       if (brickRow && f === 0) { const by = rp(pair); rows.push(fillRow(units, bricks2.filter(b => b.y === by), bricks3.filter(b => b.y === by))); }
       else rows.push(fillRow(units, windows, windows));
@@ -173,6 +183,7 @@ function buildScenery(lv = 1) {
       for (const m of row) { x.drawImage(g, m.x, m.y, m.w, m.h, px, (py + rh - m.h) * S, m.w * S, m.h * S); px += m.w * S; }
       py += rh;
     });
+    for (const [mode, col, a] of style.skin) { x.save(); x.globalCompositeOperation = mode; x.globalAlpha = a; x.fillStyle = col; x.fillRect(0, 0, bw, bh); x.restore(); }
     haze(c, hazeA);
     BUILDINGS.push(c);
   }
@@ -183,8 +194,10 @@ function buildScenery(lv = 1) {
   haze(TOWERS, 0.38, '160,200,235');
   // two depths of chunky pixel clouds
   const cr = makeRng(500 + lv);
-  for (let i = 0; i < 5; i++) CLOUDS.push({ img: makeCloud(72, 26, cr, 0.7), x: i * 190 + cr() * 80, y: 40 + cr() * 50, k: 0.03, v: 2.5, P: 950, far: true });
-  for (let i = 0; i < 4; i++) CLOUDS.push({ img: makeCloud(128, 40, cr, 0.9), x: i * 240 + cr() * 90, y: 52 + cr() * 60, k: 0.07, v: 6, P: 960, far: false });
+  // three depths of clouds, each drifting at its own pace (farther = smaller, paler, slower)
+  for (let i = 0; i < 6; i++) CLOUDS.push({ img: makeCloud(44, 16, cr, 0.5), x: i * 160 + cr() * 70, y: 22 + cr() * 40, k: 0.015, v: 0.8 + cr() * 1.2, P: 980, layer: 0 });
+  for (let i = 0; i < 5; i++) CLOUDS.push({ img: makeCloud(72, 26, cr, 0.7), x: i * 190 + cr() * 80, y: 40 + cr() * 50, k: 0.03, v: 2 + cr() * 2, P: 950, layer: 1 });
+  for (let i = 0; i < 4; i++) CLOUDS.push({ img: makeCloud(128, 40, cr, 0.9), x: i * 240 + cr() * 90, y: 52 + cr() * 60, k: 0.07, v: 5 + cr() * 3, P: 960, layer: 2 });
   // decorative sidewalk-edge props (static definitions, laid out per level)
   if (!DECOR_DEFS.length) {
     const mk = (name, sub) => ({ r: propSprite(name, sub) });
@@ -225,8 +238,8 @@ function levelCfg(n) {
 function obstacleDefs() {
   const d = (name, r, weight, minLevel = 1, tall = false) => ({ name, r, weight, tall, minLevel, w: r.w * 2, h: r.h * 2 });
   return [
-    d('cone', { x: 226, y: 131, w: 15, h: 13 }, 2), d('bags', propSprite('bags', [0, 0, 27, 16]), 2), d('hydrant', propSprite('hydrant'), 2),
-    d('can', propSprite('can'), 2), d('bollard', propSprite('bollard'), 2), d('crate', propSprite('crateS', [0, 16, 18, 16]), 3),
+    d('cone', propSprite('cones', [0, 0, 15, 13]), 2), d('bags', propSprite('bags', [0, 0, 27, 15]), 2), d('hydrant', propSprite('hydrant'), 2),
+    d('can', propSprite('can'), 2), d('bollard', propSprite('bollard'), 2), d('crate', propSprite('crateS', [0, 16, 17, 16]), 3),
     d('barrier', propSprite('barrier'), 1, 2), d('bag', propSprite('bag'), 1, 3),
     d('crate2', propSprite('crateS'), 0.6, 3, true), d('dumpster', propSprite('dumpster'), 0.6, 4, true),
   ];
@@ -1024,17 +1037,81 @@ function drawForeground() {
   }
 }
 
+// ---------- time of day: the walk drifts from midday into golden hour, sunset, dusk and night ----------
+// phase runs 0..8 over eight levels (then loops): it advances with progress through each level
+const SKY_KEYS = [  // [phase, sky top, sky middle, horizon, scene tint rgb, tint alpha, stars, lamp glow]
+  [0.0, [143, 184, 240], [212, 230, 255], [255, 255, 255], [0, 0, 0], 0, 0, 0],
+  [1.4, [143, 184, 240], [212, 230, 255], [255, 255, 255], [0, 0, 0], 0, 0, 0],
+  [2.5, [118, 160, 222], [243, 214, 160], [255, 232, 190], [255, 160, 60], 0.08, 0, 0],
+  [3.4, [70, 92, 160], [240, 140, 96], [255, 196, 124], [255, 110, 70], 0.14, 0, 0.3],
+  [4.3, [36, 40, 82], [108, 80, 136], [226, 134, 106], [70, 40, 110], 0.28, 0.4, 0.8],
+  [5.1, [11, 16, 48], [28, 36, 80], [58, 63, 110], [10, 20, 60], 0.42, 1, 1],
+  [6.6, [11, 16, 48], [28, 36, 80], [58, 63, 110], [10, 20, 60], 0.42, 1, 1],
+  [7.4, [92, 112, 174], [242, 180, 160], [255, 225, 196], [255, 150, 120], 0.12, 0.2, 0.3],
+  [8.0, [143, 184, 240], [212, 230, 255], [255, 255, 255], [0, 0, 0], 0, 0, 0],
+];
+function dayPhase() {
+  const lv = G.state === 'title' ? 1 : G.level;
+  return ((lv - 1) + clamp(G.dist / LEVEL_M, 0, 1)) % 8;
+}
+function skyAt(p) {
+  let i = 0; while (i < SKY_KEYS.length - 2 && SKY_KEYS[i + 1][0] <= p) i++;
+  const a = SKY_KEYS[i], b = SKY_KEYS[i + 1], t = clamp((p - a[0]) / (b[0] - a[0]), 0, 1);
+  const mix = (u, v) => Array.isArray(u) ? u.map((x, k) => Math.round(x + (v[k] - x) * t)) : u + (v - u) * t;
+  return { top: mix(a[1], b[1]), mid: mix(a[2], b[2]), hor: mix(a[3], b[3]), tint: mix(a[4], b[4]), tintA: mix(a[5], b[5]), stars: mix(a[6], b[6]), glow: mix(a[7], b[7]) };
+}
+const rgb = c => 'rgb(' + c[0] + ',' + c[1] + ',' + c[2] + ')';
+const STARS = (() => { const r = makeRng(4242); return Array.from({ length: 70 }, () => [Math.floor(r() * 640), Math.floor(r() * 150), r() * 6.28, r() < 0.2 ? 2 : 1]); })();
+function pixelDisc(cx, cy, rad, col) {
+  ctx.fillStyle = col;
+  for (let dy = -rad; dy <= rad; dy++) { const hw = Math.floor(Math.sqrt(rad * rad - dy * dy)); ctx.fillRect(Math.round(cx - hw), Math.round(cy + dy), hw * 2 + 1, 1); }
+}
+// sun sinks through the afternoon; the moon rises at night
+function drawSunMoon(p, sk) {
+  if (p < 4.6) {
+    const u = clamp(p / 4.2, 0, 1), y = 34 + u * u * 150, warm = clamp((p - 1.5) / 2.5, 0, 1);
+    const col = [255, Math.round(244 - 90 * warm), Math.round(170 - 120 * warm)];
+    pixelDisc(470, y, 14, 'rgba(' + col + ',0.25)'); pixelDisc(470, y, 10, rgb(col));
+  } else if (p > 4.8 && p < 7.6) {
+    const u = clamp((p - 4.8) / 1.2, 0, 1), y = 150 - u * 105;
+    pixelDisc(150, y, 9, '#f2efd8'); pixelDisc(146, y - 2, 2, '#d6d2b8'); pixelDisc(153, y + 3, 1, '#d6d2b8');
+  }
+}
+// a distant airliner crosses the sky now and then (pure function of the clock, no state)
+function drawPlane(clk, sk) {
+  const PERIOD = 64, SPEED = 13, cyc = Math.floor(clk / PERIOD), ph = clk - cyc * PERIOD;
+  const travel = ph * SPEED - 30; if (travel > W + 30) return;
+  const dir = cyc % 2 ? -1 : 1, x = Math.round(dir > 0 ? travel : W - travel), y = 26 + ((cyc * 37) % 44);
+  const night = sk.stars > 0.5, body = night ? '#20253c' : '#eef2f8', dark = night ? '#141828' : '#6d7890';
+  if (!night) { ctx.fillStyle = 'rgba(255,255,255,0.45)'; ctx.fillRect(dir > 0 ? x - 70 : x + 9, y + 1, 70, 1); }   // contrail
+  ctx.save(); ctx.translate(x, y); ctx.scale(dir, 1);
+  ctx.fillStyle = body; ctx.fillRect(0, 1, 9, 2);                 // fuselage
+  ctx.fillStyle = dark; ctx.fillRect(0, 2, 9, 1); ctx.fillRect(1, -1, 1, 2); ctx.fillRect(4, 3, 3, 1);   // belly, tail fin, wing
+  ctx.fillStyle = body; ctx.fillRect(8, 1, 2, 1);                  // nose
+  ctx.restore();
+  if (sk.stars > 0.2 && Math.floor(clk * 2) % 2) { ctx.fillStyle = '#ff4a4a'; ctx.fillRect(x + (dir > 0 ? 1 : -2), y, 1, 1); }   // blinking beacon
+}
+let LAMPS_LIT = [];
 function drawBackground() {
-  const sc = G.cam, clk = G.clock || 0;
-  // (a) sky: a static gradient (white by the horizon) with two depths of slow-drifting pixel clouds
+  const sc = G.cam, clk = G.clock || 0, p = dayPhase(), sk = skyAt(p);
+  // (a) sky: gradient by time of day, stars at night, the sun or moon, three depths of clouds, a distant plane
   const sg = ctx.createLinearGradient(0, 0, 0, 170);
-  sg.addColorStop(0, '#8fb8f0'); sg.addColorStop(0.45, '#d4e6ff'); sg.addColorStop(1, '#ffffff');
+  sg.addColorStop(0, rgb(sk.top)); sg.addColorStop(0.45, rgb(sk.mid)); sg.addColorStop(1, rgb(sk.hor));
   ctx.fillStyle = sg; ctx.fillRect(0, 0, W, SIDEWALK_TOP);
-  for (const far of [true, false]) for (const c of CLOUDS) {
-    if (c.far !== far) continue;
+  if (sk.stars > 0) for (const [x, y, ph, sz] of STARS) {
+    ctx.fillStyle = 'rgba(255,255,240,' + (sk.stars * (0.55 + 0.45 * Math.sin(clk * 2.3 + ph))).toFixed(2) + ')';
+    ctx.fillRect(x, y, sz, sz);
+  }
+  drawSunMoon(p, sk);
+  const cloudA = 1 - 0.55 * sk.tintA / 0.42;
+  ctx.globalAlpha = cloudA;
+  for (const layer of [0, 1, 2]) for (const c of CLOUDS) {
+    if (c.layer !== layer) continue;
     const x = Math.round((((c.x - sc * c.k - clk * c.v) % c.P) + c.P) % c.P) - 140;
     if (x < W) ctx.drawImage(c.img, x, Math.round(c.y));
   }
+  ctx.globalAlpha = 1;
+  drawPlane(clk, sk);
   // (b) far skyline 0.1x, (c) mid towers 0.25x (hazier, bluer)
   drawParallaxImage(IMG.skyline_far, sc * 0.1, 64);
   drawParallaxImage(TOWERS, sc * 0.25, 22);
@@ -1070,6 +1147,15 @@ function drawBackground() {
   ctx.fillStyle = '#e8d070';
   const ro = -(Math.round(sc) % 64);
   for (let x = ro; x < W; x += 64) ctx.fillRect(x, 355, 34, 2);
+  // evening falls over the whole street (characters are drawn after this, so they stay readable)
+  if (sk.tintA > 0) { ctx.fillStyle = 'rgba(' + sk.tint + ',' + sk.tintA.toFixed(3) + ')'; ctx.fillRect(0, 0, W, H); }
+  // street lamps switch on as it gets dark: a warm glow and a pool of light on the pavement
+  if (sk.glow > 0) for (const [lx, ly] of LAMPS_LIT) {
+    ctx.fillStyle = 'rgba(255,214,120,' + (0.22 * sk.glow).toFixed(3) + ')';
+    for (let k = 0; k < 4; k++) ctx.fillRect(lx - 10 - k * 6, ly + 4 + k * 16, 20 + k * 12, 16);
+    ctx.fillStyle = 'rgba(255,230,150,' + (0.8 * sk.glow).toFixed(3) + ')'; ctx.fillRect(lx - 4, ly, 8, 3);
+  }
+  LAMPS_LIT = [];
 }
 
 function drawDecor(e, sx) {
@@ -1082,6 +1168,7 @@ function drawDecor(e, sx) {
     ctx.fillStyle = '#6f7889'; ctx.fillRect(sx + w / 2 + 1, top + hh - 4, 2, 170 - hh + 4);
     ctx.drawImage(IMG.general, r.x, r.y, r.w, r.h, sx, top, w, hh);
     ctx.fillStyle = '#6f7889'; ctx.fillRect(sx + w / 2 - 8, base - 6, 16, 6);
+    LAMPS_LIT.push([sx + 10, top + hh - 2], [sx + w - 10, top + hh - 2]);   // under the two shades
   } else {
     ctx.drawImage(IMG.general, r.x, r.y, r.w, r.h, sx, base - r.h * S, r.w * S, r.h * S);
   }

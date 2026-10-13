@@ -45,18 +45,17 @@ To work on the sources directly, open `src/index.html` (or serve the folder with
 `python3 -m http.server`). Commit the rebuilt `missys-big-day-out.html` along with any
 source change; GitHub Pages serves it as-is.
 
-`tools/pack_assets.py` and `tools/recolor_fox.py` regenerate `src/assets/` from the original
-asset packs, which are not in this repo (they go in `assets_raw/`).
+`tools/art/build_art.py` draws the original art. `tools/pack_assets.py` and
+`tools/recolor_fox.py` copy and recolor the third-party sprites from their asset packs,
+which are not in this repo (they go in `assets_raw/`).
 
 ## Credits and license
 
-The code, sound and music arrangements are MIT-licensed (`LICENSE`). The pixel art
-comes from these creators and keeps their own terms; see `CREDITS.md`:
+The code, sound, music arrangements and original art (the street, buildings, parrots,
+critters and bones) are MIT-licensed (`LICENSE`). The rest of the pixel art comes from
+these creators and keeps their own terms; see `CREDITS.md`:
 
 - Missy: [2D Pixel Art Fox Sprites](https://elthen.itch.io/2d-pixel-art-fox-sprites) by Elthen, recolored
 - The owner: [MiniFolks - Villagers](https://lyaseek.itch.io/minifvillagers) by LYASeeK
 - Food: [Pixel Mart](https://ghostpixxells.itch.io/pixel-mart) by ghostpixxells
-- Street: [Pixel Streets Pack](https://fadinfadin.itch.io/pixelstreetspack) by fadinfadin
-- Parrots, bunny, kitty and frog: [Animal Mega Pack](https://toffeecraft.itch.io/animal-mega-pack) by ToffeeCraft, parrots recolored
-- Bones: [Dog Mega Pack](https://toffeecraft.itch.io/dog-mega-bundle) by ToffeeCraft
 - Music: public-domain melodies (Foster, Joplin, Rossini, Grieg, Brahms, Bishop and more), arranged as chiptunes
