@@ -1779,6 +1779,27 @@ function critterTick() {
   }
 }
 
+// Pixel heart over the toilet once Missy lies down: pops in, then bobs on a 4-step NES cycle,
+// squashing for one step at the bottom of each bounce.
+const HEART = ['.RR...RR.', 'RWRR.RRRR', 'RWRRRRRRR', 'RRRRRRRRR', '.RRRRRRR.', '..RRRRR..', '...RRR...', '....R....'];
+const HEART_SQUASH = ['.RRR...RRR.', 'RWRRR.RRRRR', 'RRRRRRRRRRR', '.RRRRRRRRR.', '...RRRRR...', '.....R.....'];
+const HEART_COL = { R: '#e8344e', W: '#ffd6dc' };
+function drawHeart(cx, bottom, t) {
+  if (t < 0.5) return;
+  const px = t < 0.6 ? 1 : 2;                       // pop: one frame-ish at half size
+  const step = Math.floor((t - 0.5) * 5) % 4;       // 0..3, 5 steps a second
+  const map = step === 0 && px === 2 ? HEART_SQUASH : HEART;
+  const lift = [0, 2, 4, 2][step];
+  const w = map[0].length * px, h = map.length * px, x0 = cx - Math.floor(w / 2), y0 = bottom - h - lift;
+  ctx.fillStyle = '#1c1a26';                         // outline: every filled pixel's neighbours, drawn first
+  map.forEach((row, y) => [...row].forEach((c, x) => {
+    if (c !== '.') for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) ctx.fillRect(x0 + (x + dx) * px, y0 + (y + dy) * px, px, px);
+  }));
+  map.forEach((row, y) => [...row].forEach((c, x) => {
+    if (c !== '.') { ctx.fillStyle = HEART_COL[c]; ctx.fillRect(x0 + x * px, y0 + y * px, px, px); }
+  }));
+}
+
 function updateToilet(dt) {
   const t = G.toilet;
   if (G.state === 'win' && G.phase !== 'walk') {
@@ -2011,6 +2032,7 @@ function drawEntities() {
     } else if (e.type === 'toilet') {
       shadow(sx + 32, FEET_Y, 28, 0.25);
       ctx.drawImage(IMG.toilet, G.toilet.frame * 32, 0, 32, 32, Math.round(sx), FEET_Y - 60, 64, 64);
+      if (G.state === 'win' && G.phase === 'lie') drawHeart(Math.round(sx) + 32, FEET_Y - 66, G.lieT);
     } else if (e.type === 'parrot') {
       const img = IMG['bird_' + e.variant];
       let fr = Math.floor(e.fl) % 8, left = true, bob = 0;
