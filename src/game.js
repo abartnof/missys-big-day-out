@@ -1235,21 +1235,14 @@ function updateQuote(bs) {
   let text; do { text = QUOTES[Math.floor(Math.random() * QUOTES.length)]; } while (text === q.last && QUOTES.length > 1);
   Object.assign(q, { b, p, text, last: text, t: 3.2 + text.length * 0.03, cd: 5 + Math.random() * 6 });
 }
-function drawQuote(bs) {
+function drawQuote(bs) {   // just the words, outlined, floating above the neighbour's window
   const q = QUOTE; if (!q.b) return;
   const font = pfont(16), lines = wrapText(q.text, 200, font);
   ctx.font = font;
-  const tw = Math.max(...lines.map(l => ctx.measureText(l).width));
-  const bw = Math.ceil(tw) + 12, bh = lines.length * 17 + 6;
+  const tw = Math.ceil(Math.max(...lines.map(l => ctx.measureText(l).width)));
   const by0 = SIDEWALK_TOP + 2 - q.b.c.height, px = Math.round(q.b.x - bs + q.p.x + 8), py = by0 + q.p.y;
-  const bx = Math.round(clamp(px - bw / 2, 4, W - 4 - bw)), byy = Math.round(Math.max(50, py - bh - 10));
-  ctx.fillStyle = '#1c1a26'; ctx.fillRect(bx - 2, byy - 2, bw + 4, bh + 4);
-  ctx.fillStyle = '#fffbe8'; ctx.fillRect(bx, byy, bw, bh);
-  const tx = clamp(px, bx + 6, bx + bw - 6);                     // little tail down to the window
-  for (let i = 0; i < 5; i++) { ctx.fillStyle = '#1c1a26'; ctx.fillRect(tx - (5 - i) - 1, byy + bh + 2 + i - 2, (5 - i) * 2 + 2, 1); }
-  for (let i = 0; i < 5; i++) { ctx.fillStyle = '#fffbe8'; ctx.fillRect(tx - (5 - i), byy + bh + i - 1, (5 - i) * 2, 1); }
-  ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#1c1a26';
-  lines.forEach((l, i) => ctx.fillText(l, bx + 6, byy + 3 + 8 + i * 17));
+  const cx = Math.round(clamp(px, 6 + tw / 2, W - 6 - tw / 2)), top = Math.round(Math.max(52, py - lines.length * 17 - 6));
+  lines.forEach((l, i) => outlineText(l, cx, top + 8 + i * 17, font, '#fffbe8', 'center', '#1c1a26', 3));
 }
 function drawBackground() {
   const sc = G.cam, clk = G.clock || 0, p = dayPhase(), sk = skyAt(p);
