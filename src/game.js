@@ -36,6 +36,7 @@ const LINES = [
   "Stop looking at me like that", "Your breath is terrible!", "Go to your bed!",
   "I have to send this SD card to my gaffer over Slack!", "I have a sweet potato in the oven!",
   "It's so warm, why am I wearing a hoodie!", "You're an angel!",
+  "I've had enough of your shenanigans!", "I need you to do your business and come in!",
 ];
 
 function loadImage(src) {
@@ -944,10 +945,11 @@ function updatePlay(dt) {
 
 // ---------- rare bonus critters (bunny / kitty / froggy): at most one per level, ~35% of levels ----------
 const CRITTERS = {
-  rabbit: { img: 'critter_rabbit', n: 11, scale: 2, pts: 10, name: 'BUNNY!', w: 44, h: 26 },
-  cat: { img: 'critter_cat', n: 13, scale: 2, pts: 15, name: 'KITTY!', w: 40, h: 26 },
+  rabbit: { img: 'critter_rabbit', n: 8, scale: 2, pts: 10, name: 'BUNNY!', w: 32, h: 24 },
+  cat: { img: 'critter_cat', n: 8, scale: 2, pts: 15, name: 'KITTY!', w: 36, h: 24 },
   frog: { img: 'critter_frog', n: 4, scale: 1, pts: 20, name: 'FROGGY!', w: 18, h: 15, faceLeft: true },
 };
+const CAT_LEAP = [3, 4, 5, 6, 7, 7, 0, 0, 1];   // gather, push off, long stretched flight, touch down
 function spawnCritter(kind, side, seed) {
   kind = kind === 'bunny' ? 'rabbit' : kind;
   side = side || 'right';
@@ -964,14 +966,14 @@ function updateCritter(dt) {
   c.sup += (top - c.sup) * Math.min(1, dt * 14);   // hops up onto and over obstacles
   c.arc = 0;
   if (c.kind === 'rabbit') {
-    c.sx += c.dir * 215 * dt; const np = c.phase + dt / 0.62; if (np >= 1 && c.sx > -20 && c.sx < W + 20) Sfx.voice('bunny_boing'); c.phase = np % 1; c.arc = 12 * Math.sin(Math.PI * c.phase); c.frame = Math.floor(c.phase * 11) % 11;
+    c.sx += c.dir * 215 * dt; const np = c.phase + dt / 0.62; if (np >= 1 && c.sx > -20 && c.sx < W + 20) Sfx.voice('bunny_boing'); c.phase = np % 1; c.arc = 12 * Math.sin(Math.PI * c.phase); c.frame = Math.floor(c.phase * 8) % 8;
   } else if (c.kind === 'cat') {
     if (c.state === 'run') {
-      c.sx += c.dir * 250 * dt; c.phase += dt * 14; c.frame = 7 + Math.floor(c.phase) % 6;
+      c.sx += c.dir * 250 * dt; c.phase += dt * 12; c.frame = Math.floor(c.phase) % 8;
       if (!c.leapDone && (c.sx - c.leapAt) * c.dir >= 0) { c.state = 'leap'; c.lt = 0; c.leapDone = true; Sfx.voice('cat_hiss'); }
     } else {
       c.lt += dt; const u = clamp(c.lt / 0.75, 0, 1);
-      c.sx += c.dir * 290 * dt; c.arc = 44 * Math.sin(Math.PI * u); c.frame = Math.min(9, 1 + Math.floor(u * 9));
+      c.sx += c.dir * 290 * dt; c.arc = 44 * Math.sin(Math.PI * u); c.frame = CAT_LEAP[Math.min(CAT_LEAP.length - 1, Math.floor(u * CAT_LEAP.length))];
       if (c.lt >= 0.75) { c.state = 'run'; c.phase = 0; }
     }
   } else { // frog: quick, erratic little hops with idle frames and a squash between them
@@ -1405,7 +1407,7 @@ function drawWarns() {
 function drawCritter() {
   const c = G.critter; if (!c) return;
   const def = CRITTERS[c.kind], img = IMG[def.img], s = def.scale, dh = c.sup + c.arc;
-  shadow(c.sx, FEET_Y - c.sup, 15 * s * (1 - Math.min(0.5, c.arc / 90)) * 0.7, 0.25);
+  shadow(c.sx, FEET_Y - c.sup, def.w * 0.5 * (1 - Math.min(0.5, c.arc / 90)), 0.25);
   let flip = c.dir < 0; if (def.faceLeft) flip = !flip;
   ctx.save(); ctx.translate(Math.round(c.sx), Math.round(FEET_Y - dh));
   ctx.scale(flip ? -1 : 1, c.sq > 0 ? 0.78 : 1);

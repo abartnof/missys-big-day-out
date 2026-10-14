@@ -25,6 +25,7 @@ class C:
             s.p[(x, y)] = c
 
     def rect(s, x0, y0, x1, y1, c):
+        x0, y0, x1, y1 = int(x0), int(y0), int(x1), int(y1)
         for y in range(y0, y1 + 1):
             for x in range(x0, x1 + 1):
                 s.px(x, y, c)
@@ -204,66 +205,58 @@ def make_birds():
         sheet(fr, 16, 16).save(os.path.join(OUT, f'bird_{name}.png'))
 
 
-# ---------------------------------------------------------------- rabbit
+# ---------------------------------------------------------------- bunny and kitty
+# Small, chibi proportions (big round heads, short legs, shiny eyes), drawn at about
+# Missy's size. Poses are absolute coordinates in a 32x32 frame facing right; feet touch y=30.
+def cute_eye(c, x, y, iris=OL):
+    """2x2 eye with a white catchlight, and a blush pixel below and behind it."""
+    c.px(x, y, '#ffffff'); c.px(x + 1, y, iris); c.px(x, y + 1, iris); c.px(x + 1, y + 1, iris)
+    c.px(x - 1, y + 2, '#f4a0b4')
+
+
 def rabbit_frame(p):
     c = C(32, 32)
-    fur = '#b88a5c'; dk = '#8a6040'; hi = '#dcb68a'; bel = '#efe0c0'; pink = '#e88a8a'
-    gy = 30
-    lift = p['lift']
-    bx, by = p['body']; by -= lift
-    hx, hy = p['head']; hy -= lift
-    # tail
-    c.ell(bx - p['brx'] - 0.5, by - 1 + p.get('tail', 0), 2.0, 2.0, '#f4f0e8')
-    # far legs (darker)
-    ffx, ffy = p['ff']
-    c.cap(bx + p['brx'] - 3, by + 2, ffx - 1, ffy - lift, 1.0, dk)
-    hfx, hfy = p['hf']
-    c.cap(bx - 3, by + 1, hfx - 2, hfy - lift, 1.1, dk)
-    # body
-    c.cap(bx - p['brx'] + p['bry'], by, bx + p['brx'] - p['bry'], by + p.get('tilt', 0), p['bry'], fur)
-    # belly
-    c.ell(bx + 2, by + p['bry'] - 1.5, p['brx'] * 0.45, 1.5, bel)
-    # near legs
-    c.cap(bx + p['brx'] - 3, by + 2, ffx, ffy - lift, 1.1, fur)
-    # haunch + hind
-    c.ell(bx - 3.5, by + 1, p['hr'][0], p['hr'][1], fur)
-    c.cap(bx - 3, by + 2, hfx, hfy - lift, 1.3, fur, 1.0)
-    # feet pads
-    c.rect(hfx - 2, hfy - lift - 1, hfx + 2, hfy - lift, fur)
-    c.rect(ffx - 1, ffy - lift - 1, ffx + 1, ffy - lift, fur)
-    # head
-    c.ell(hx, hy, 4.3, 3.7, fur)
-    c.ell(hx + 3, hy + 1.3, 2.4, 2.0, bel)
-    # ears
-    ex, ey = p['ear']  # tip offset relative to head
-    for k, col in ((0, dk), (1, fur)):
-        c.cap(hx - 1.5 + k * 1.8, hy - 2.5, hx - 1.5 + k * 1.8 + ex, hy - 2.5 + ey, 1.2, col, 0.8)
+    fur = '#f2f0ec'; hi = '#ffffff'; dk = '#c4c4d0'; far = '#d6d6e0'; ear = '#f4a6b8'
+    (rx, ry), (fx, fy), r = p['rear'], p['front'], p['r']
+    hx, hy = p['head']
+    (hfx, hfy), (ffx, ffy) = p['hf'], p['ff']
+    tx, ty = p['ears']
+    # far ear and far legs, darker
+    c.cap(hx - 2.2, hy - 2, hx - 2.2 + tx - 1, hy - 2 + ty + 1, 1.0, far, 0.8)
+    c.cap(rx, ry + 1, hfx + 1, hfy, 0.8, far)
+    c.cap(fx, fy + 1, ffx - 1, ffy, 0.7, far)
+    # body, round haunch, puff tail
+    c.cap(rx, ry, fx, fy, r, fur)
+    c.ell(rx - 0.5, ry + 0.5, r + 0.6, r + 0.4, fur)
+    c.ell(rx - r - 0.6, ry - 1.2, 1.5, 1.5, fur)
+    # near legs: long hind foot, little front paw
+    c.cap(rx, ry + 1, hfx, hfy, 1.0, fur)
+    c.rect(hfx - 1, hfy - 1, hfx + 2, hfy, fur)
+    c.cap(fx, fy + 1, ffx, ffy, 0.8, fur)
+    c.rect(ffx, ffy - 1, ffx + 1, ffy, fur)
+    # near ear (long, pink inside) and big round head
+    c.cap(hx - 1, hy - 2, hx - 1 + tx, hy - 2 + ty, 1.2, fur, 1.0)
+    c.ell(hx, hy, 3.8, 3.4, fur)
     c.shade({fur: (hi, dk)})
-    # details
-    c.px(hx + 2, hy - 1, OL)
-    c.px(hx + 6, hy + 0.5, pink); c.px(hx + 6, hy + 1.5, pink) if False else None
-    c.px(hx + 1, hy + 0, hi) if False else None
+    c.cap(hx - 1 + tx * 0.3, hy - 2 + ty * 0.3, hx - 1 + tx * 0.85, hy - 2 + ty * 0.85, 0.5, ear)
+    cute_eye(c, hx + 1, hy - 1)
+    c.px(hx + 3, hy + 1, '#e87a90')
     c.outline()
     return c
 
 
 def rabbit_poses():
-    # body center, head center, ears tip offset, feet (x,y absolute); brx,bry body half sizes
-    def P(lift, body, head, ear, ff, hf, brx=7, bry=4.5, hr=(4.2, 4.0), tilt=0, tail=0):
-        return dict(lift=lift, body=body, head=head, ear=ear, ff=ff, hf=hf, brx=brx, bry=bry, hr=hr, tilt=tilt, tail=tail)
-    G = 30
+    def P(rear, front, r, head, ears, hf, ff):
+        return dict(rear=rear, front=front, r=r, head=head, ears=ears, hf=hf, ff=ff)
     return [
-        P(0, (13, 24), (20, 20), (-6, -9), (21, G), (11, G)),                         # 0 sit
-        P(0, (13, 25), (20, 22), (-9, -7), (22, G), (10, G), bry=4.0, hr=(4.4, 3.6)),  # 1 crouch low
-        P(0, (14, 24), (22, 20), (-8, -8), (25, G), (9, G), brx=8, bry=4.0, tilt=-2),  # 2 push
-        P(3, (14, 22), (23, 17), (-9, -4), (26, G - 1), (6, G), brx=9, bry=3.6, hr=(3.6, 3.2), tilt=-3),  # 3 leave
-        P(7, (14, 19), (24, 15), (-10, -2), (27, G - 4), (4, G - 3), brx=10, bry=3.4, hr=(3.4, 3.0), tilt=-2),  # 4 stretched
-        P(9, (15, 18), (25, 15), (-10, 0), (27, G - 3), (5, G - 3), brx=10, bry=3.4, hr=(3.4, 3.0), tilt=0),
-        P(9, (15, 18), (24, 16), (-8, -6), (24, G - 2), (11, G - 2), brx=8, bry=4.0, hr=(4.0, 3.6), tilt=1),   # 6 tuck
-        P(8, (15, 19), (23, 17), (-8, -6), (22, G - 2), (13, G - 2), brx=7, bry=4.5, hr=(4.2, 4.0), tilt=1),   # 7
-        P(4, (14, 21), (22, 18), (-9, -5), (24, G), (10, G - 1), brx=8, bry=4.0, hr=(4.2, 3.8), tilt=1),       # 8 descend
-        P(1, (14, 24), (23, 21), (-9, -4), (26, G), (9, G), brx=9, bry=3.8, hr=(4.0, 3.6), tilt=0),           # 9 land
-        P(0, (13, 25), (20, 22), (-9, -6), (22, G), (11, G), bry=4.0, hr=(4.4, 3.6)),                         # 10 settle
+        P((12, 26), (16, 26), 3.0, (20, 22), (-4, -6), (13, 30), (18, 30)),   # 0 gathered on the ground
+        P((12, 25), (18, 23), 2.8, (22, 19), (-6, -4), (7, 30), (23, 27)),    # 1 push off
+        P((11, 23), (19, 22), 2.8, (23, 18), (-7, -2), (4, 27), (25, 26)),    # 2 stretched flight
+        P((11, 22), (19, 22), 2.8, (23, 18), (-7, -1), (4, 26), (26, 25)),    # 3 peak
+        P((11, 22), (19, 23), 2.8, (23, 19), (-6, -3), (6, 26), (24, 28)),    # 4 front paws reach down
+        P((12, 22), (19, 25), 2.9, (23, 21), (-6, -4), (11, 26), (22, 30)),   # 5 front touchdown
+        P((13, 23), (18, 26), 3.0, (22, 22), (-5, -5), (17, 28), (20, 30)),   # 6 hind legs swing past
+        P((13, 25), (17, 26), 3.0, (21, 22), (-4, -6), (17, 30), (14, 29)),   # 7 gathered landing
     ]
 
 
@@ -271,92 +264,63 @@ def make_rabbit():
     sheet([rabbit_frame(p) for p in rabbit_poses()], 32, 32).save(os.path.join(OUT, 'critter_rabbit.png'))
 
 
-# ---------------------------------------------------------------- cat
 def cat_frame(p):
     c = C(32, 32)
-    fur = '#e08a3c'; hi = '#f6b868'; dk = '#a85a22'; far = '#b86a2c'; bel = '#f8e0b8'; stripe = '#a85a22'
-    lift = p['lift']
-    rx, ry = p['rear']; ry -= lift      # hip centre
-    cx_, cy_ = p['chest']; cy_ -= lift  # shoulder centre
-    hx, hy = p['head']; hy -= lift
-    tail = p['tail']  # list of points
-    # tail
-    pts = [(rx + a, ry + b - 0) for a, b in tail]
+    fur = '#f09040'; hi = '#ffc070'; dk = '#c06424'; far = '#c8702c'; bel = '#fbe6c4'; stripe = OL
+    (rx, ry), (cx_, cy_), hx, hy = p['rear'], p['chest'], *p['head']
+    br = p.get('br', 2.3)
+    pts = [(rx + a, ry + b) for a, b in p['tail']]
     for i in range(len(pts) - 1):
-        c.cap(pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1], 1.2, fur)
-    # far legs
+        c.cap(pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1], 0.9, fur)
     for key, ox, oy in (('hf', rx, ry), ('ff', cx_, cy_)):
         fx, fy = p[key]
-        c.cap(ox, oy + 1, fx, fy - lift, 1.1, far)
-        c.rect(fx, fy - lift - 1, fx + 1, fy - lift, far)
-    # body
-    c.cap(rx, ry, cx_, cy_, p['br'], fur, p['br'] + 0.4)
-    c.cap(rx + 1, ry + p['br'] - 1.2, cx_ - 1, cy_ + p['br'] - 1.4, 1.0, bel)
-    # stripes
-    for t in (0.25, 0.5, 0.75):
-        sx = rx + (cx_ - rx) * t; sy = ry + (cy_ - ry) * t - p['br'] + 0.5
-        c.px(sx, sy + 0, stripe); c.px(sx, sy + 1, stripe)
-    # near legs
+        c.cap(ox, oy + 1, fx, fy, 0.8, far)
+        c.rect(fx, fy - 1, fx + 1, fy, far)
+    # body (a raised middle arches the back when gathered), pale belly
+    c.cap(rx, ry, cx_, cy_, br, fur, br + 0.3)
+    if p.get('arch'):
+        c.ell((rx + cx_) / 2, (ry + cy_) / 2 - p['arch'], br + 0.6, br, fur)
+    c.cap(rx + 1, ry + br - 0.8, cx_ - 1, cy_ + br - 0.8, 0.8, bel)
     for key, ox, oy in (('hn', rx, ry), ('fn', cx_, cy_)):
         fx, fy = p[key]
-        c.cap(ox, oy + 1, fx, fy - lift, 1.3, fur, 1.1)
-        c.rect(fx - 1, fy - lift - 1, fx + 1, fy - lift, fur)
-    # head
-    c.ell(hx, hy, 4.2, 3.6, fur)
-    c.ell(hx + 3, hy + 1.2, 2.2, 1.8, bel)
-    # ears
-    for ex in (-2.5, 1.0):
-        c.px(hx + ex, hy - 4, fur); c.px(hx + ex + 1, hy - 4, fur)
-        c.px(hx + ex, hy - 5, fur) if ex < 0 else c.px(hx + ex + 1, hy - 5, fur)
-        c.px(hx + ex + 0.5, hy - 3, fur)
+        c.cap(ox, oy + 1, fx, fy, 0.9, fur)
+        c.rect(fx - 1, fy - 1, fx + 1, fy, fur)
+    # big round head, pointy ears, pale muzzle
+    c.ell(hx, hy, 3.6, 3.2, fur)
+    for ex in (-2.5, 1.5):
+        c.rect(hx + ex, hy - 4, hx + ex + 1, hy - 3, fur)
+        c.px(hx + ex + (0 if ex < 0 else 1), hy - 5, fur)
     c.shade({fur: (hi, dk)})
-    c.px(hx + 1, hy - 4, dk) if False else None
-    # face
-    c.px(hx + 2, hy - 1, OL); c.px(hx + 3, hy - 1, '#9be07a') if False else None
-    c.px(hx + 5, hy + 0, '#e87a90')
-    c.px(hx + 1, hy - 2, stripe); c.px(hx - 1, hy - 3, stripe)
+    c.ell(hx + 2.2, hy + 1.5, 1.7, 1.2, bel)
+    c.px(hx - 2, hy - 4, '#f4a6b8'); c.px(hx + 2, hy - 4, '#f4a6b8')
+    # tabby stripes on the back and forehead
+    for t in (0.2, 0.45, 0.7):
+        sx, sy = rx + (cx_ - rx) * t, ry + (cy_ - ry) * t - br - p.get('arch', 0) * (1 - abs(t - 0.5) * 2)
+        c.px(sx, sy + 1, stripe); c.px(sx, sy + 2, stripe)
+    c.px(hx - 1, hy - 3, stripe); c.px(hx, hy - 3, stripe)
+    cute_eye(c, hx + 1, hy - 1, '#2a3a20')
+    c.px(hx + 3.6, hy + 0.6, '#e87a90')
     c.outline()
     return c
 
 
 def cat_poses():
-    G = 30
-    T_UP = [(-1, -1), (-3, -4), (-4, -8), (-3, -11)]
-    T_BACK = [(-1, -1), (-4, -1), (-8, -2), (-11, -3)]
-    T_LOW = [(-1, 0), (-4, 1), (-8, 1), (-11, 0)]
-    T_HIGH = [(-1, -2), (-3, -6), (-6, -9), (-10, -10)]
+    T_BACK = [(-1, -1), (-4, -2), (-7, -2), (-9, -3)]
+    T_CURL = [(-1, -1), (-3, -3), (-5, -5), (-8, -5)]
+    T_LOW = [(-1, 0), (-4, 0), (-7, 1), (-9, 0)]
 
-    def P(lift, rear, chest, head, hn, hf, fn, ff, tail, br=3.6):
-        return dict(lift=lift, rear=rear, chest=chest, head=head, hn=hn, hf=hf, fn=fn, ff=ff, tail=tail, br=br)
-
-    out = []
-    # 0 idle stand
-    out.append(P(0, (9, 20), (20, 20), (25, 15), (8, G), (11, G), (20, G), (23, G), T_UP))
-    # 1 crouch
-    out.append(P(0, (8, 23), (19, 25), (25, 23), (8, G), (12, G), (23, G), (25, G), T_LOW, 3.4))
-    # 2 deeper crouch, rear up
-    out.append(P(0, (8, 22), (18, 26), (24, 25), (7, G), (11, G), (23, G), (26, G), T_LOW, 3.3))
-    # 3 spring
-    out.append(P(2, (8, 24), (20, 20), (26, 17), (4, G), (7, G - 1), (25, G - 5), (27, G - 4), T_BACK, 3.4))
-    # 4 stretched airborne
-    out.append(P(6, (7, 22), (21, 19), (27, 17), (1, G - 4), (3, G - 3), (28, G - 7), (30, G - 5), T_BACK, 3.2))
-    # 5 stretched peak
-    out.append(P(8, (7, 21), (21, 19), (27, 17), (1, G - 5), (3, G - 4), (29, G - 9), (31, G - 7), T_BACK, 3.2))
-    # 6 reach (coming down, paws forward)
-    out.append(P(5, (8, 21), (21, 21), (27, 20), (2, G - 3), (4, G - 2), (29, G - 6), (31, G - 4), T_HIGH, 3.3))
-    # 7 run extended
-    out.append(P(4, (8, 20), (21, 20), (26, 18), (2, G - 2), (4, G - 3), (27, G - 3), (30, G - 5), T_BACK, 3.2))
-    # 8 run: front reaching down, hind trailing
-    out.append(P(1, (9, 21), (21, 21), (26, 19), (5, G - 1), (7, G), (26, G), (29, G - 1), T_BACK, 3.3))
-    # 9 run: contact gathered
-    out.append(P(0, (11, 20), (20, 21), (25, 18), (12, G), (14, G), (20, G), (22, G - 1), T_BACK, 3.5))
-    # 10 hind pushing
-    out.append(P(1, (10, 19), (20, 20), (25, 17), (4, G), (8, G - 1), (22, G - 3), (25, G - 6), T_BACK, 3.4))
-    # 11 gathered airborne
-    out.append(P(4, (11, 20), (20, 20), (25, 17), (14, G - 4), (16, G - 3), (21, G - 4), (23, G - 3), T_BACK, 3.5))
-    # 12 extending
-    out.append(P(3, (9, 20), (21, 20), (26, 18), (6, G - 2), (8, G - 3), (25, G - 4), (28, G - 6), T_BACK, 3.3))
-    return out
+    def P(rear, chest, head, hn, hf, fn, ff, tail, arch=0, br=2.3):
+        return dict(rear=rear, chest=chest, head=head, hn=hn, hf=hf, fn=fn, ff=ff, tail=tail, arch=arch, br=br)
+    return [
+        P((10, 23), (21, 23), (25, 20), (4, 26), (5, 27), (28, 25), (29, 26), T_BACK),           # 0 stretched flight
+        P((10, 24), (21, 25), (25, 22), (5, 27), (6, 28), (26, 30), (28, 29), T_BACK),           # 1 front touchdown
+        P((11, 24), (20, 26), (24, 23), (9, 28), (8, 27), (23, 30), (25, 30), T_CURL, 1),        # 2 front plant, hind swings
+        P((12, 23), (19, 26), (23, 23), (14, 29), (13, 28), (20, 30), (22, 30), T_CURL, 2),      # 3 gathered
+        P((12, 23), (19, 24), (23, 21), (17, 30), (16, 30), (15, 28), (14, 29), T_CURL, 2),      # 4 hind land ahead
+        P((11, 24), (19, 23), (23, 20), (14, 30), (13, 30), (24, 26), (23, 27), T_LOW, 1),       # 5 push off
+        P((9, 25), (20, 23), (24, 20), (5, 30), (7, 29), (27, 24), (26, 25), T_BACK),            # 6 extend
+        P((10, 22), (21, 22), (25, 19), (3, 25), (5, 26), (29, 23), (28, 24), T_BACK),           # 7 flight
+    ]
 
 
 def make_cat():

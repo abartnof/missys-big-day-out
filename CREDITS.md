@@ -23,10 +23,12 @@ only its Latin characters.
 
 ## Original art
 
-The street, buildings, skylines, street props, parrots, bunny, kitty, frog,
-bones and the toilet (from the game's own design kit) are original to this game, and covered by the MIT License
-with the code. The art is drawn by the scripts in `tools/art/`, and the pixel
-heart, clouds, pavement and on-screen buttons are drawn in code at runtime.
+The street, buildings, skylines, street props, parrots, bunny, kitty, frog and
+bones were drawn for this game by Claude, Anthropic's AI model, as pixel art
+written in code: the scripts in `tools/art/` place every sprite's pixels, and
+the pixel heart, clouds, pavement and on-screen buttons are drawn in code at
+runtime. The toilet comes from the game's own design kit. All of it is covered
+by the MIT License with the code.
 
 ## Music
 

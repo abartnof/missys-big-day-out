@@ -51,8 +51,9 @@ which are not in this repo (they go in `assets_raw/`).
 
 ## Credits and license
 
-The code, sound, music arrangements and original art (the street, buildings, parrots,
-critters and bones) are MIT-licensed (`LICENSE`). The rest of the pixel art comes from
+The code, sound, music arrangements and original art are MIT-licensed (`LICENSE`). The
+street, buildings, parrots, critters and bones were drawn in code by Claude, Anthropic's AI
+model (`tools/art/`). The rest of the pixel art comes from
 these creators and keeps their own terms; see `CREDITS.md`:
 
 - Missy: [2D Pixel Art Fox Sprites](https://elthen.itch.io/2d-pixel-art-fox-sprites) by Elthen, recolored
