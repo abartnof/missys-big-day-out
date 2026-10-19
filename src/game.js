@@ -37,6 +37,8 @@ const LINES = [
   "I have to send this SD card to my gaffer over Slack!", "I have a sweet potato in the oven!",
   "It's so warm, why am I wearing a hoodie!", "You're an angel!",
   "I've had enough of your shenanigans!", "I need you to do your business and come in!",
+  "You're a princess!", "Why is your mouth so wet?", "You're doing that stare again!", "We never go down this street!",
+  "I was just napping after flying back from Atlanta!",
 ];
 
 function loadImage(src) {
